@@ -1,116 +1,559 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px;
-  line-height: 24px;
+  line-height: 1.5;
   font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  color: #0f172a;           /* slate-900 */
+  background-color: #f3f4f6; /* gray-100 */
 }
 
-.container {
+/* Reset dasar */
+*,
+*::before,
+*::after { 
+  box-sizing: border-box; 
+}
+
+body {
   margin: 0;
-  padding-top: 10vh;
+  background-color: #f3f4f6;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Layout utama */
+.app-root {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.app-container {
+  width: 100%;
+  max-width: 960px;
+}
+
+/* Header */
+.app-header {
+  margin-bottom: 24px;
+}
+
+.app-title {
+  margin: 0 0 4px;
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.app-subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #6b7280; /* gray-500 */
+}
+
+/* Konten: form & tabel */
+.content-layout {
   display: flex;
   flex-direction: column;
+  gap: 20px;
+}
+
+/* Card umum */
+.card {
+  background-color: #ffffff;
+  border-radius: 18px;
+  padding: 22px 26px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.card-title {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.card-description {
+  margin: 0 0 18px;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+/* Form */
+.employee-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px 24px;
+  align-items: flex-start;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-row label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563; /* gray-600 */
+}
+
+.form-row input {
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease;
+  background-color: #f9fafb;
+}
+
+.form-row input:focus {
+  border-color: #6366f1; /* indigo-500 */
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  background-color: #ffffff;
+}
+
+.form-actions {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* Tombol utama */
+.btn-primary {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(79, 70, 229, 0.35);
+  transition: transform 0.08s ease, box-shadow 0.12s ease,
+    filter 0.12s ease;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.03);
+  box-shadow: 0 10px 22px rgba(79, 70, 229, 0.45);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+  box-shadow: 0 6px 14px rgba(79, 70, 229, 0.35);
+}
+
+/* Kartu tabel */
+.table-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.badge-count {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background-color: #eef2ff; /* indigo-50 */
+  color: #4f46e5;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Tabel */
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.employee-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 0.9rem;
+}
+
+.employee-table thead {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: #ffffff;
+}
+
+.employee-table th,
+.employee-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.employee-table th {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.employee-table tbody tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+.employee-table tbody tr:hover {
+  background-color: #eef2ff;
+}
+
+.table-empty {
   text-align: center;
+  padding: 18px 12px;
+  color: #9ca3af;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
+/* Responsif kecil */
+@media (max-width: 640px) {
+  .app-root {
+    padding: 20px 10px;
+  }
+
+  .card {
+    padding: 18px 18px;
+  }
+
+  .app-title {
+    font-size: 1.5rem;
+  }
 }
 
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
+.action-cell {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }
 
-.row {
+.btn-secondary,
+.btn-danger,
+.btn-secondary-outline {
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.btn-secondary:hover {
+  background: #d1d5db;
+}
+
+.btn-secondary-outline {
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.btn-secondary-outline:hover {
+  background: #f3f4f6;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+/* Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
   display: flex;
   justify-content: center;
+  align-items: center;
+  z-index: 50;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.modal {
+  background: white;
+  border-radius: 24px;
+  padding: 24px 28px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
 }
 
-a:hover {
-  color: #535bf2;
+.modal-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 16px;
 }
 
-h1 {
+.modal-form .form-row {
+  margin-bottom: 12px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 16px;
+}
+
+.tab-nav {
+  margin-top: 12px;
+  margin-bottom: 16px;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  background-color: #e5e7eb; /* gray-200 */
+  gap: 4px;
+}
+
+.tab-nav__item {
+  border: none;
+  background: transparent;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #4b5563; /* gray-600 */
+  transition: background-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.08s ease;
+}
+
+.tab-nav__item:hover {
+  transform: translateY(-0.5px);
+}
+
+.tab-nav__item.is-active {
+  background-color: #ffffff;
+  color: #111827; /* gray-900 */
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
+}
+
+.tab-nav--inner {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+/* Header Aksi di tabel karyawan: teks di tengah */
+.aksi-header--karyawan {
   text-align: center;
 }
 
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+/* Layout umum untuk sel aksi */
+.action-cell {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
-button {
+/* Tabel JABATAN: tombol rata kiri, tepat di bawah kata "Aksi" */
+.action-cell.action-cell--jabatan {
+  justify-content: flex-start;
+}
+
+/* Tabel KARYAWAN: tombol di tengah, sehingga "Aksi" ada di tengah 
+   antara tombol Edit dan Hapus */
+.action-cell.action-cell--karyawan {
+  justify-content: center;
+}
+
+.periode-toolbar {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.periode-toolbar__info {
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.periode-toolbar__buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  border-radius: 999px;
+}
+
+.btn-chip {
+  border-radius: 999px;
+  border: none;
+  background-color: #e5e7eb;
+  padding: 4px 16px;
   cursor: pointer;
+  font-size: 0.8rem;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+.btn-chip.is-active {
+  background-color: #111827;
+  color: #ffffff;
 }
 
-input,
-button {
-  outline: none;
+.btn-secondary-outline.btn-sm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-#greet-input {
-  margin-right: 5px;
+.calendar-presensi {
+  margin-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
+.calendar-presensi__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
 
-  a:hover {
-    color: #24c8db;
-  }
+.calendar-presensi__periode {
+  font-size: 0.9rem;
+  color: #4b5563;
+}
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+.calendar-presensi__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.calendar {
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  background-color: #f9fafb;
+}
+
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.calendar__cell {
+  min-height: 48px;
+  border-radius: 0.5rem;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.calendar__cell--header {
+  background-color: #111827;
+  color: #f9fafb;
+  text-align: center;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.calendar__day-number {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.calendar-presensi__hint {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.calendar__cell--clickable {
+  cursor: pointer;
+  transition: box-shadow 0.1s ease, transform 0.1s ease;
+}
+
+.calendar__cell--clickable:hover {
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.calendar__badge {
+  margin-top: 4px;
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.calendar__badge--hadir {
+  background: #dcfce7;
+  border: 1px solid #16a34a;
+}
+
+.calendar__badge--sakit {
+  background: #fee2e2;
+  border: 1px solid #b91c1c;
+}
+
+.calendar__badge--cuti {
+  background: #e0f2fe;
+  border: 1px solid #0284c7;
+}
+
+.calendar__badge--absen {
+  background: #fef9c3;
+  border: 1px solid #eab308;
+}
+
+.calendar__cell--status-hadir {
+  background-color: #f0fdf4;
+}
+
+.calendar__cell--status-sakit {
+  background-color: #fef2f2;
+}
+
+.calendar__cell--status-cuti {
+  background-color: #eff6ff;
+}
+
+.calendar__cell--status-absen {
+  background-color: #fefce8;
+}
+
+.radio-group-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.radio-group-vertical label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
