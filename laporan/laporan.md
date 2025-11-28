@@ -123,7 +123,7 @@ Penjelasan:
 - Di fungsi `main`, aplikasi Tauri dibangun menggunakan pola builder. `tauri::Builder::default()` membuat instance default, lalu memanggil `.invoke_handler(tauri::generate_handler![ ... ])` untuk mendaftarkan fungsi-fungsi rust yang akan di ekspor sebagai command ke front-end Tauri.
 - `tauri::generate_handler!` menerima daftar fungsi dari modul `commands`.
 - `.run(tauri::generate_context!())` akan dipanggil dan membaca konfigurasi dari `tauri.conf.json` lalu menjalankan event loop Tauri: membuka window aplikasi, menghubungkan event, dan menangani command sampai aplikasi ditutup.
-- Hasil dari `run` adalah `Result`
+- Hasil dari `run` adalah `Result`, sehingga diakhiri dengan `expect(...);` yang akan membuat Tauri "Panic" dengan pesan itu, sehingga kita tau kalau ada masalah ketika kita menjalankan aplikasi.
 
 - **lib.rs**
 
