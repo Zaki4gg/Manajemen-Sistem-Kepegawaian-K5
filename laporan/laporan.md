@@ -609,7 +609,7 @@ Penjelasan:
 - Fungsi `add_employee` menerima data `NewEmployee`, menyusunnya ke dalam JSON body, dan mengirim request POST ke Supabase untuk menambah data baru ke tabel employees.
 - Fungsi `update_employee` mengirim request PATCH berdasarkan id pegawai, memperbarui data sesuai field yang diterima pada struct Employee, dan mengembalikan status kesuksesan operasi.
 - Fungsi `delete_employee` menjalankan operasi DELETE ke endpoint employees dengan filter id, dan mengembalikan hasil berupa `Ok(())` jika berhasil atau error jika gagal.
-- Setiap operasi HTTP menyertakan header apikey dan Authorization untuk autentikasi Supabase dan menggunakan .await karena semua fungsi berjalan secara asynchronous.
+- Setiap operasi HTTP menyertakan header apikey dan Authorization untuk autentikasi Supabase dan menggunakan .await karena semua fungsi berjalan secara `asynchronous`.
 
 15. **jabatan_service.rs**
 
@@ -722,14 +722,14 @@ pub async fn delete_jabatan(nama: String) -> Result<(), String> {
 ```
 
 Penjelasan:
-- Bagian import mengambil model Jabatan dan NewJabatan, struct Supabase sebagai koneksi REST, serde_json::json untuk membuat payload JSON, dan urlencoding::encode untuk memastikan parameter URL aman digunakan saat memfilter berdasarkan nama.
-- list_jabatan mengambil data seluruh jabatan dari Supabase menggunakan query select=* dan sorting berdasarkan nama, lalu memparsing JSON ke Vec<Jabatan>.
-- add_jabatan membuat data jabatan baru melalui request POST, mengirim body JSON yang berisi nama dan tunjangan, lalu mengembalikan status operasi.
-- update_jabatan memperbarui data jabatan berdasarkan parameter nama yang di-encode untuk menghindari karakter tidak valid di URL, menggunakan request PATCH dengan payload JSON berisi data baru.
-- delete_jabatan menghapus data jabatan berdasarkan nama menggunakan request DELETE ke endpoint Supabase dengan filter parameter.
+- Bagian import mengambil model `Jabatan` dan `NewJabatan`, struct Supabase sebagai koneksi REST, `serde_json::json` untuk membuat payload JSON, dan `urlencoding::encode` untuk memastikan parameter URL aman digunakan saat memfilter berdasarkan nama.
+- `list_jabatan` mengambil data seluruh jabatan dari Supabase menggunakan query `select=*` dan sorting berdasarkan nama, lalu memparsing JSON ke `Vec<Jabatan>`.
+- `add_jabatan` membuat data jabatan baru melalui request POST, mengirim body JSON yang berisi nama dan tunjangan, lalu mengembalikan status operasi.
+- `update_jabatan` memperbarui data jabatan berdasarkan parameter nama yang di-encode untuk menghindari karakter tidak valid di URL, menggunakan request PATCH dengan payload JSON berisi data baru.
+- `delete_jabatan` menghapus data jabatan berdasarkan nama menggunakan request `DELETE` ke endpoint `Supabase` dengan filter parameter.
 - Semua request menyertakan header apikey dan Authorization sebagai autentikasi Supabase serta menggunakan await karena berjalan asynchronous.
 
-- **presensi_service.rs**
+16. **presensi_service.rs**
 
 ```rust
 use crate::app::domain::presensi::{Presensi, NewPresensi};
@@ -821,17 +821,17 @@ pub async fn upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
 ```
 
 Penjelasan:
-- File ini menggunakan model Presensi, koneksi Supabase, dan library chrono untuk perhitungan tanggal, serta serde_json untuk membuat payload JSON.
-- list_presensi_for_employee_month:
+- File ini menggunakan model Presensi, koneksi Supabase, dan library chrono untuk perhitungan tanggal, serta `serde_json` untuk membuat payload JSON.
+- `list_presensi_for_employee_month`:
   - Menghitung tanggal awal dan akhir bulan secara otomatis.
-  - Mengirim request GET ke Supabase dengan filter employee_id dan rentang tanggal.
+  - Mengirim request GET ke Supabase dengan filter `employee_id` dan rentang tanggal.
   - Memparsing hasil JSON menjadi daftar Presensi.
-- upsert_presensi:
-  - Melakukan insert atau update presensi jika sudah ada data yang sama (berdasarkan employee_id dan tanggal).
+- `upsert_presensi`:
+  - Melakukan insert atau update presensi jika sudah ada data yang sama (berdasarkan `employee_id` dan tanggal).
   - Mengirim request POST dengan payload JSON dan pengaturan conflict resolution.
-- Semua fungsi berjalan asynchronous dan memakai autentikasi Supabase melalui header API Key.
+- Semua fungsi berjalan `asynchronous` dan memakai autentikasi Supabase melalui header API Key.
 
-- **src/app/services/mod.rs**
+17. **src/app/services/mod.rs**
 
 ```rust
 pub mod employee_service;
@@ -841,8 +841,8 @@ pub mod presensi_service;
 ```
 
 Penjelasan:
-- File ini mendeklarasikan empat modul service: employee_service, admin_service, jabatan_service, dan presensi_service.
-- Dengan deklarasi pub mod, seluruh fungsi service tersebut dapat digunakan oleh bagian lain aplikasi, termasuk command pada Tauri backend.
+- File ini mendeklarasikan empat modul service: `employee_service`, `admin_service`, `jabatan_service`, dan `presensi_service`.
+- Dengan deklarasi `pub mod`, seluruh fungsi `service` tersebut dapat digunakan oleh bagian lain aplikasi, termasuk command pada Tauri backend.
 - Layer services berfungsi sebagai logika bisnis yang menghubungkan antara command dan infrastruktur database (Supabase), sehingga file ini berperan sebagai pengelompok modul layanan yang ada dalam sistem.
 
 ## Screenshot
