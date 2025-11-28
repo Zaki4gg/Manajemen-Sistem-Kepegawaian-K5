@@ -89,7 +89,7 @@ Beberapa konsep functional programming yang menjadi panduan desain:
 
 ### Main dan Konfigurasi
 
-- **main.rs**
+1.  **main.rs**
 
 ```rust
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -125,7 +125,7 @@ Penjelasan:
 - `.run(tauri::generate_context!())` akan dipanggil dan membaca konfigurasi dari `tauri.conf.json` lalu menjalankan event loop Tauri: membuka window aplikasi, menghubungkan event, dan menangani command sampai aplikasi ditutup.
 - Hasil dari `run` adalah `Result`, sehingga diakhiri dengan `expect(...);` yang akan membuat Tauri "Panic" dengan pesan itu, sehingga kita tau kalau ada masalah ketika kita menjalankan aplikasi.
 
-- **lib.rs**
+2.  **lib.rs**
 
 ```rust
 #[tauri::command]
