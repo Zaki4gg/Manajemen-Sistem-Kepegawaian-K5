@@ -118,8 +118,12 @@ fn main() {
 ```
 
 Penjelasan:
-Baris pertama menunjukkan atribut untuk seluruh crate yang mengatur perilaku aplikasi ketika dijalankan di Windows
-Kode ini untuk memanggil modul app dan coomand. 
+- Baris pertama menunjukkan atribut untuk seluruh crate yang mengatur perilaku aplikasi ketika dijalankan di Windows
+- Baris ke tiga dan empat bertujuan untuk memanggil modul app dan coomand.
+- Di fungsi `main`, aplikasi Tauri dibangun menggunakan pola builder. `tauri::Builder::default()` membuat instance default, lalu memanggil `.invoke_handler(tauri::generate_handler![ ... ])` untuk mendaftarkan fungsi-fungsi rust yang akan di ekspor sebagai command ke front-end Tauri.
+- `tauri::generate_handler!` menerima daftar fungsi dari modul `commands`.
+- `.run(tauri::generate_context!())` akan dipanggil dan membaca konfigurasi dari `tauri.conf.json` lalu menjalankan event loop Tauri: membuka window aplikasi, menghubungkan event, dan menangani command sampai aplikasi ditutup.
+- Hasil dari `run` adalah `Result`
 
 - **lib.rs**
 
