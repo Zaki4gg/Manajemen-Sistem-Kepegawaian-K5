@@ -143,6 +143,15 @@ pub fn run() {
 }
 ```
 
+Penjelasan:
+- Baris pertama menggunakan atribut #[tauri::command] untuk menandai bahwa fungsi di bawahnya bisa dipanggil dari frontend melalui invoke() pada sisi JavaScript Tauri.
+- Baris kedua hingga keempat mendefinisikan fungsi greet, menerima parameter nama berupa &str, dan mengembalikan string yang dibentuk menggunakan format! — fungsi ini nantinya akan diekspor sebagai command ke frontend.
+- Pada atribut baris keenam, #[cfg_attr(mobile, tauri::mobile_entry_point)] memastikan fungsi run akan menjadi entry point aplikasi jika dibangun untuk perangkat mobile, sedangkan pada desktop atribut ini diabaikan.
+- Di fungsi run, aplikasi Tauri dibangun dengan pola builder: tauri::Builder::default() membuat instance dasar, kemudian .plugin(...) menambahkan plugin pembuka file/URL, dan .invoke_handler(tauri::generate_handler![greet]) mendaftarkan fungsi greet sebagai command yang dapat dipanggil dari frontend.
+- Makro tauri::generate_handler! menerima daftar fungsi command dan menghasilkan handler internal Tauri agar dapat berkomunikasi dengan frontend.
+- .run(tauri::generate_context!()) akan membaca konfigurasi dari tauri.conf.json, lalu menjalankan event loop Tauri untuk membuka jendela aplikasi dan menangani event maupun command sampai aplikasi ditutup.
+- .expect("error while running tauri application") digunakan sebagai error handling yang menampilkan pesan jika aplikasi gagal dijalankan.
+
 - **commands.rs**
 
 ```rust
@@ -215,6 +224,16 @@ pub async fn cmd_upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
 }
 ```
 
+Penjelasan:
+- Baris awal digunakan untuk mengimpor tipe domain (Employee, Admin, Jabatan, Presensi) dan modul-modul service yang berisi logika bisnis.
+- Setiap fungsi diberi atribut #[tauri::command] agar dapat dipanggil dari frontend melalui invoke() pada aplikasi Tauri.
+- Semua fungsi command bersifat asynchronous sehingga pemanggilan ke service berjalan tanpa menghambat UI.
+- Command terkait Employee (cmd_list_employees, cmd_add_employee, cmd_update_employee, cmd_delete_employee) menjalankan operasi CRUD melalui employee_service.
+- cmd_admin_login memanggil admin_service untuk melakukan validasi login admin dan mengembalikan objek Admin jika berhasil.
+- Command terkait Jabatan (cmd_list_jabatan, cmd_add_jabatan, cmd_update_jabatan, cmd_delete_jabatan) meneruskan operasi data jabatan ke jabatan_service.
+- Command terkait Presensi (cmd_list_presensi, cmd_upsert_presensi) menangani pengambilan dan penyimpanan presensi melalui presensi_service.
+- Semua fungsi mengembalikan Result<> sebagai mekanisme pengiriman data sukses atau pesan error ke frontend.
+
 - **src/app/mod.rs**
 
 ```rust
@@ -223,6 +242,12 @@ pub mod infra;
 pub mod services;
 ```
 
+Penjelasan:
+- Baris-baris ini mendeklarasikan tiga modul utama dalam folder app yaitu domain, infra, dan services, sehingga dapat digunakan oleh seluruh bagian aplikasi.
+- pub mod domain; membuka akses ke modul domain yang berisi definisi struktur data inti/entitas seperti Employee, Admin, Jabatan, dan Presensi.
+- pub mod infra; membuka akses ke modul infra (infrastruktur) yang biasanya berisi implementasi koneksi database, repository, atau komunikasi dengan sistem eksternal.
+- pub mod services; membuka akses ke modul services yang mengatur logika bisnis, menjadi penghubung antara command (Tauri backend) dan layer database/infrastruktur.
+
 - **build.rs**
 
 ```rust
@@ -230,6 +255,14 @@ fn main() {
     tauri_build::build()
 }
 ```
+
+Penjelasan:
+- Fungsi main pada file build.rs akan dijalankan sebelum proses kompilasi utama, karena build.rs adalah build script di Rust.
+- Pada baris di dalam fungsi, tauri_build::build() dipanggil untuk melakukan persiapan build aplikasi Tauri, seperti:
+  - memproses file konfigurasi tauri.conf.json
+  - menghasilkan aset atau kode tambahan yang diperlukan saat compile
+  - menyesuaikan konfigurasi build sesuai platform (Windows, Linux, macOS, atau mobile)
+- Build script ini memastikan bahwa hasil build sudah sesuai kebutuhan runtime Tauri sebelum aplikasi dikompilasi dan dijalankan.
 
 ### Domain
 
@@ -243,6 +276,14 @@ pub struct Admin {
     pub email: String,
 }
 ```
+
+Penjelasan:
+- Baris use serde::{Deserialize, Serialize}; mengimpor trait yang memungkinkan struct di-serialize dan di-deserialize (misalnya untuk komunikasi frontend–backend lewat JSON).
+- Atribut #[derive(Debug, Clone, Serialize, Deserialize)] otomatis memberikan kemampuan:
+  - Debug → bisa dicetak untuk keperluan debugging
+  - Clone → bisa digandakan nilainya
+  - Serialize & Deserialize → data dapat dikirim/diterima melalui Tauri command dan database dengan format JSON
+- pub struct Admin adalah model domain untuk Admin yang memiliki satu field publik email: String, sehingga bisa diakses di seluruh aplikasi.
 
 - **employee.rs**
 
@@ -270,6 +311,12 @@ pub struct NewEmployee {
 
 ```
 
+Penjelasan:
+- Serialize dan Deserialize dari serde memungkinkan data Employee dan NewEmployee dipertukarkan dengan frontend melalui JSON.
+- Derive Debug dan Clone memudahkan debugging serta penggandaan struct.
+- Employee mewakili data pegawai yang sudah tersimpan di database sehingga memiliki id.
+- NewEmployee digunakan saat menambah pegawai baru, belum memiliki id karena akan dibuat oleh database.
+
 - **jabatan.rs**
 
 ```rust
@@ -288,6 +335,12 @@ pub struct NewJabatan {
 }
 
 ```
+
+Penjelasan:
+- Mengimpor Serialize dan Deserialize agar struct dapat dikirim/diterima dalam format JSON saat berkomunikasi dengan frontend.
+- Debug dan Clone otomatis diimplementasikan untuk memudahkan debugging dan penggandaan data.
+- Jabatan merepresentasikan data jabatan yang sudah ada di sistem, memiliki field nama dan tunjangan.
+- NewJabatan digunakan saat menambahkan data jabatan baru, memiliki field yang sama namun tanpa identitas tambahan dari database.
 
 - **presensi.rs**
 
@@ -311,6 +364,12 @@ pub struct NewPresensi {
 
 ```
 
+Penjelasan:
+- Serialize dan Deserialize dari serde memungkinkan data presensi dikonversi ke/dari JSON untuk komunikasi dengan frontend.
+- Debug dan Clone memudahkan debugging serta penggandaan objek data.
+- Presensi merepresentasikan data presensi yang sudah tersimpan di sistem, sehingga memiliki id serta employee_id, tanggal, dan status.
+- NewPresensi digunakan saat menambahkan atau memperbarui data presensi dan tidak memiliki id karena nilai tersebut biasanya dihasilkan oleh database.
+
 - **src/app/domain/mod.rs**
 
 ```rust
@@ -319,6 +378,11 @@ pub mod admin;
 pub mod jabatan;
 pub mod presensi;
 ```
+
+Penjelasan:
+- File ini mendeklarasikan modul domain yang ada dalam folder domain, sehingga dapat digunakan oleh bagian lain aplikasi.
+- pub mod employee;, pub mod admin;, pub mod jabatan;, dan pub mod presensi; masing-masing membuka akses ke definisi entitas bisnis utama aplikasi, yaitu data pegawai, admin, jabatan, dan presensi.
+- Dengan deklarasi ini, seluruh model domain dapat di-import dari luar modul domain menggunakan crate::app::domain::....
 
 ### Infrastructure
 
@@ -354,11 +418,22 @@ impl Supabase {
 }
 ```
 
+Penjelasan:
+- Baris import membawa dotenv() untuk memuat variabel lingkungan dari file .env, reqwest::Client untuk melakukan HTTP request ke Supabase, serta std::env untuk membaca environment variable.
+- Struct Supabase menyimpan konfigurasi koneksi yaitu url dan anon_key yang digunakan untuk mengakses Supabase API.
+- Pada impl Supabase, metode new() memanggil dotenv().ok() untuk memuat environment variable, lalu mengambil nilai SUPABASE_URL dan SUPABASE_ANON_KEY dari environment; kedua nilai wajib ada, jika tidak akan menghasilkan error.
+- Metode client() mengembalikan instance reqwest::Client, yang digunakan untuk mengirim request HTTP.
+- Metode endpoint(path) menyusun URL endpoint REST Supabase dengan memastikan tidak ada karakter / ganda, lalu menambahkan path tabel atau resource yang ingin diakses.
+
 - **src/app/infra/mod.rs**
 
 ```rust
 pub mod supabase;
 ```
+
+Penjelasan:
+- Baris ini mendeklarasikan bahwa modul supabase merupakan bagian dari modul infra, sehingga dapat diakses dari bagian lain aplikasi melalui path seperti crate::app::infra::supabase.
+- Modul infra sendiri berfungsi sebagai layer infrastruktur, sehingga deklarasi ini menunjukkan bahwa koneksi dan komunikasi dengan Supabase berada di lapisan ini.
 
 ### Services
 
@@ -400,6 +475,16 @@ pub async fn login_admin(email: String, password: String) -> Result<Admin, Strin
         .ok_or_else(|| "Email atau password salah".to_string())
 }
 ```
+
+Penjelasan:
+- Bagian import mengambil model Admin dari domain serta Supabase sebagai konektor REST untuk mengakses database Supabase.
+- Fungsi login_admin diberi tipe async karena melakukan komunikasi jaringan, dan mengembalikan Result<Admin, String> untuk mengatur kemungkinan sukses atau gagal dalam proses login.
+- Sebuah instance Supabase dibuat untuk memuat konfigurasi koneksi seperti URL dan API Key dari environment variable.
+- Query string dibentuk untuk melakukan pencarian pada tabel admin di Supabase dengan filter email dan password, serta membatasi hasil agar hanya satu admin yang diambil.
+- Request HTTP dikirim menggunakan reqwest::Client dari Supabase, disertai header apikey dan Authorization sesuai aturan keamanan Supabase.
+- Response dicek statusnya; jika gagal maka error dikembalikan berisi detail status dan pesan dari Supabase.
+- Data JSON dari hasil request diparsing menjadi Vec<Admin> menggunakan serde_json, dan fungsi mengembalikan admin pertama jika data ditemukan.
+- Jika tidak ada admin yang cocok (email atau password salah), fungsi mengembalikan pesan error ke frontend.
 
 - **employee_service.rs**
 
@@ -518,6 +603,14 @@ pub async fn delete_employee(id: i64) -> Result<(), String> {
 }
 ```
 
+Penjelasan:
+- Bagian import mengambil model Employee dan NewEmployee dari domain, Supabase untuk koneksi REST, serta serde_json::json untuk membentuk payload JSON.
+- Fungsi list_employees mengambil seluruh data pegawai dari tabel employees dengan query select=* dan sorting berdasarkan id, lalu mem-parsing JSON menjadi Vec<Employee> untuk dikirim ke frontend.
+- Fungsi add_employee menerima data NewEmployee, menyusunnya ke dalam JSON body, dan mengirim request POST ke Supabase untuk menambah data baru ke tabel employees.
+- Fungsi update_employee mengirim request PATCH berdasarkan id pegawai, memperbarui data sesuai field yang diterima pada struct Employee, dan mengembalikan status kesuksesan operasi.
+- Fungsi delete_employee menjalankan operasi DELETE ke endpoint employees dengan filter id, dan mengembalikan hasil berupa Ok(()) jika berhasil atau error jika gagal.
+- Setiap operasi HTTP menyertakan header apikey dan Authorization untuk autentikasi Supabase dan menggunakan .await karena semua fungsi berjalan secara asynchronous.
+
 - **jabatan_service.rs**
 
 ```rust
@@ -628,6 +721,14 @@ pub async fn delete_jabatan(nama: String) -> Result<(), String> {
 }
 ```
 
+Penjelasan:
+- Bagian import mengambil model Jabatan dan NewJabatan, struct Supabase sebagai koneksi REST, serde_json::json untuk membuat payload JSON, dan urlencoding::encode untuk memastikan parameter URL aman digunakan saat memfilter berdasarkan nama.
+- list_jabatan mengambil data seluruh jabatan dari Supabase menggunakan query select=* dan sorting berdasarkan nama, lalu memparsing JSON ke Vec<Jabatan>.
+- add_jabatan membuat data jabatan baru melalui request POST, mengirim body JSON yang berisi nama dan tunjangan, lalu mengembalikan status operasi.
+- update_jabatan memperbarui data jabatan berdasarkan parameter nama yang di-encode untuk menghindari karakter tidak valid di URL, menggunakan request PATCH dengan payload JSON berisi data baru.
+- delete_jabatan menghapus data jabatan berdasarkan nama menggunakan request DELETE ke endpoint Supabase dengan filter parameter.
+- Semua request menyertakan header apikey dan Authorization sebagai autentikasi Supabase serta menggunakan await karena berjalan asynchronous.
+
 - **presensi_service.rs**
 
 ```rust
@@ -719,6 +820,17 @@ pub async fn upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
 }
 ```
 
+Penjelasan:
+- File ini menggunakan model Presensi, koneksi Supabase, dan library chrono untuk perhitungan tanggal, serta serde_json untuk membuat payload JSON.
+- list_presensi_for_employee_month:
+  - Menghitung tanggal awal dan akhir bulan secara otomatis.
+  - Mengirim request GET ke Supabase dengan filter employee_id dan rentang tanggal.
+  - Memparsing hasil JSON menjadi daftar Presensi.
+- upsert_presensi:
+  - Melakukan insert atau update presensi jika sudah ada data yang sama (berdasarkan employee_id dan tanggal).
+  - Mengirim request POST dengan payload JSON dan pengaturan conflict resolution.
+- Semua fungsi berjalan asynchronous dan memakai autentikasi Supabase melalui header API Key.
+
 - **src/app/services/mod.rs**
 
 ```rust
@@ -728,6 +840,10 @@ pub mod jabatan_service;
 pub mod presensi_service;
 ```
 
+Penjelasan:
+- File ini mendeklarasikan empat modul service: employee_service, admin_service, jabatan_service, dan presensi_service.
+- Dengan deklarasi pub mod, seluruh fungsi service tersebut dapat digunakan oleh bagian lain aplikasi, termasuk command pada Tauri backend.
+- Layer services berfungsi sebagai logika bisnis yang menghubungkan antara command dan infrastruktur database (Supabase), sehingga file ini berperan sebagai pengelompok modul layanan yang ada dalam sistem.
 
 ## Screenshot
 
