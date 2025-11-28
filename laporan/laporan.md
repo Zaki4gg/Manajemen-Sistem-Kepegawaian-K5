@@ -143,6 +143,27 @@ pub fn run() {
 }
 ```
 
+Penjelasan:
+- `#[tauri::command]` merupakan attribute macro dari Tauri, yang membuat fungsi `greet` didaftarkan sebagai `command` yang bisa dipanggil di front-end Tauri.
+- Fungsi `run` biasanya dipanggil dari `main.rs` untuk menjalankan aplikasi, dengan urutan chaining:
+  1. `tauri::Builder::default()`
+     - Membuat builder aplikasi Tauri dengan konfigurasi default.
+     - Dari sini kita bisa nambah plugin, command, menu, dll.
+  2. `.plugin(tauri_plugin_opener::init())`
+     - Mendaftarkan plugin opener.
+     - Plugin ini biasanya dipakai untuk membuka URL/file dengan aplikasi default sistem (misalnya buka browser ketika given link).
+     - Tanpa menggunakan plugin ini, fitur-fitur terkait “open with system handler” dari plugin ini tidak tersedia.
+  3. `.invoke_handler(tauri::generate_handler![greet])`
+     - `tauri::generate_handler![greet]` akan:
+       - Mendaftarkan fungsi `greet` sebagai command yang bisa di-invoke dari frontend.
+     - Dengan ini, ketika frontend memanggil `"greet"`, Tauri akan mengeksekusi fungsi Rust `greet`.
+  4. `.run(tauri::generate_context!())`
+     - `tauri::generate_context!()` membaca konfigurasi dari `tauri.conf.json` dan environment build untuk membuat **context** aplikasi.
+     - `.run(...)` menjalankan event loop Tauri.
+  5. `.expect("error while running tauri application");`
+     - `run(...)` mengembalikan `Result`.
+     - `expect(...)` akan menyebabkan program _panic_ dengan pesan tersebut jika terjadi error.
+
 - **commands.rs**
 
 ```rust
