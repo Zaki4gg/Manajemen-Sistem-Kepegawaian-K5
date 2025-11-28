@@ -117,6 +117,10 @@ fn main() {
 }
 ```
 
+Penjelasan:
+Baris pertama menunjukkan atribut untuk seluruh crate yang mengatur perilaku aplikasi ketika dijalankan di Windows
+Kode ini untuk memanggil modul app dan coomand. 
+
 - **lib.rs**
 
 ```rust
