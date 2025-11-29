@@ -1,4 +1,5 @@
 use crate::app::domain::presensi::{Presensi, NewPresensi};
+use crate::app::domain::presensi_summary::PresensiSummary;
 use crate::app::infra::supabase::Supabase;
 use chrono::NaiveDate;
 use serde_json::json;
@@ -28,7 +29,7 @@ pub async fn list_presensi_for_employee_month(
     let start_date = first.format("%Y-%m-%d").to_string();
     let end_date = last.format("%Y-%m-%d").to_string();
 
-    // Lebih efisien: filter langsung di query
+    // filter langsung di query
     let url = sb.endpoint(&format!(
         "presensi?select=*&employee_id=eq.{employee_id}\
         &tanggal=gte.{start_date}&tanggal=lte.{end_date}&order=tanggal.asc"
@@ -54,6 +55,37 @@ pub async fn list_presensi_for_employee_month(
     Ok(items)
 }
 
+/// HITUNG ringkasan presensi per bulan di BACKEND
+pub async fn get_presensi_summary_for_employee_month(
+    employee_id: i64,
+    year: i32,
+    month: i32,
+) -> Result<PresensiSummary, String> {
+    let items = list_presensi_for_employee_month(employee_id, year, month).await?;
+
+    let mut summary = PresensiSummary {
+        total_hadir: 0,
+        total_sakit: 0,
+        total_cuti: 0,
+        total_absen: 0,
+    };
+
+    for p in items {
+        match p.status.as_str() {
+            "hadir" => summary.total_hadir += 1,
+            "sakit" => summary.total_sakit += 1,
+            "cuti"  => summary.total_cuti  += 1,
+            "absen" => summary.total_absen += 1,
+            other => {
+                eprintln!("[get_presensi_summary] status tak dikenal: {}", other);
+            }
+        }
+    }
+
+    Ok(summary)
+}
+
+/// Insert / update presensi (upsert) berdasarkan (employee_id, tanggal)
 pub async fn upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
     let sb = Supabase::new();
 
