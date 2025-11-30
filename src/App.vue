@@ -303,9 +303,9 @@ async function loadPresensiForCurrentMonth() {
     }
 
     const res = await invoke("cmd_list_presensi", {
-      employee_id,
+      employee_id: employee_id,
       year: periodYear.value,
-      month: periodMonth.value + 1, // 1–12
+      month: periodMonth.value + 1,
     });
 
     console.log("[loadPresensi] result from backend:", res);
@@ -365,7 +365,7 @@ async function loadPresensiSummaryForCurrentMonth() {
     }
 
     const res = await invoke("cmd_get_presensi_summary", {
-      employee_id,
+      employeeId: employee_id,
       year: periodYear.value,
       month: periodMonth.value + 1, // 1..12
     });
