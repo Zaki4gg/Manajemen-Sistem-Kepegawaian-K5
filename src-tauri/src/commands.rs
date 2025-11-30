@@ -55,7 +55,7 @@ pub async fn cmd_delete_jabatan(nama: String) -> Result<(), String> {
     jabatan_service::delete_jabatan(nama).await
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn cmd_list_presensi(
     employee_id: i64,
     year: i32,
