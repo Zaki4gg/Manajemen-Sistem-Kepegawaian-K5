@@ -8,3 +8,5 @@
 
 # will have tauri dev and build files
 /src-tauri/.env/
+/src-tauri/target/
+/src-tauri/struk_gaji_output/

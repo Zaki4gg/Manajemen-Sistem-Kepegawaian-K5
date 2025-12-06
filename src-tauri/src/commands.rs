@@ -8,7 +8,9 @@ use crate::app::services::{
     admin_service,
     jabatan_service,
     presensi_service,
+    payslip_pdf_service,
 };
+
 
 #[tauri::command]
 pub async fn cmd_list_employees() -> Result<Vec<Employee>, String> {
@@ -55,7 +57,7 @@ pub async fn cmd_delete_jabatan(nama: String) -> Result<(), String> {
     jabatan_service::delete_jabatan(nama).await
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 pub async fn cmd_list_presensi(
     employee_id: i64,
     year: i32,
@@ -76,4 +78,36 @@ pub async fn cmd_get_presensi_summary(
 #[tauri::command]
 pub async fn cmd_upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
     presensi_service::upsert_presensi(presensi).await
+}
+
+
+#[tauri::command]
+pub async fn cmd_generate_slip_batch(mode: String) -> Result<(), String> {
+    use crate::app::services::payslip_pdf_service::GenerateMode;
+
+    let mode = match mode.as_str() {
+        "single" => GenerateMode::SingleCore,
+        "multi"  => GenerateMode::MultiCore,
+        other    => return Err(format!("Mode generate tidak dikenal: {}", other)),
+    };
+
+    let output_root = "./struk_gaji_output";
+
+    payslip_pdf_service::generate_slips_jan_2025_to_dec_2026(output_root, mode).await
+}
+
+
+#[tauri::command]
+pub async fn cmd_generate_slip_yearly_batch(mode: String) -> Result<(), String> {
+    use crate::app::services::payslip_pdf_service::GenerateMode;
+
+    let mode = match mode.as_str() {
+        "single" => GenerateMode::SingleCore,
+        "multi"  => GenerateMode::MultiCore,
+        other    => return Err(format!("Mode generate tidak dikenal: {}", other)),
+    };
+
+    let output_root = "./struk_gaji_output_tahunan";
+
+    payslip_pdf_service::generate_yearly_slips_2025_2026(output_root, mode).await
 }

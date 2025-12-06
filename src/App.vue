@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, watch } from "vue";
+import { ref, reactive, computed, watch, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import AdminLogin from "./AdminLogin.vue";
 import "./App.css";
@@ -131,6 +131,17 @@ function formatRupiah(n) {
   );
 }
 
+function formatDuration(ms) {
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(2)} detik`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds - minutes * 60;
+  return `${minutes} menit ${remaining.toFixed(2)} detik`;
+}
+
 // ======================
 // State
 // ======================
@@ -142,6 +153,27 @@ const admin = ref(null);
 // tab
 const activeTab = ref("karyawan"); // "karyawan" | "laporan"
 const activeReportTab = ref("jadwal"); // "jadwal" | "gaji"
+const isGeneratingSlip = ref(false);
+
+// mode laporan gaji: "monthly" | "yearly"
+const salaryViewMode = ref("monthly");
+
+// stopwatch generate slip
+const generateSlipElapsedMs = ref(0);
+let generateSlipTimerId = null;
+
+// durasi generate slip terakhir (ms)
+const lastGenerateSlipDurationMs = ref(null);
+
+const generateSlipElapsedLabel = computed(() =>
+  formatDuration(generateSlipElapsedMs.value),
+);
+
+const lastGenerateSlipDurationLabel = computed(() => {
+  const ms = lastGenerateSlipDurationMs.value;
+  if (ms == null) return null;
+  return formatDuration(ms);
+});
 
 // data karyawan
 const employees = ref([]);
@@ -172,7 +204,7 @@ const jabatanForm = reactive({
 const editingJabatanNama = ref(null);
 
 // presensi & gaji
-const selectedEmployeeId = ref("");
+const selectedemployee_id = ref("");
 const periodYear = ref(2025);
 const periodMonth = ref(0); // 0=Jan
 const attendanceByDate = ref({});
@@ -190,6 +222,38 @@ const presensiSummary = reactive({
   totalAbsen: 0,
 });
 
+// laporan gaji tahunan
+const isLoadingYearlyPayslip = ref(false);
+const yearlyPayslipRows = ref([]); // 1 row per bulan
+
+const yearlyPayslipTotals = computed(() => {
+  let totalGajiBersih = 0;
+  let totalGajiSetelahAsuransi = 0;
+  let totalHadir = 0;
+  let totalHadirEfektif = 0;
+  let totalHariKerja = 0;
+
+  for (const row of yearlyPayslipRows.value) {
+    totalGajiBersih += row.gajiBersihDiterima || 0;
+    totalGajiSetelahAsuransi += row.gajiSetelahAsuransi || 0;
+    totalHadir += row.totalHadir || 0;
+    totalHadirEfektif += row.totalHadirEfektif || 0;
+    totalHariKerja += row.hariKerja || 0;
+  }
+
+  const faktorKehadiranRata2 =
+    totalHariKerja > 0 ? totalHadirEfektif / totalHariKerja : 0;
+
+  return {
+    totalGajiBersih,
+    totalGajiSetelahAsuransi,
+    totalHadir,
+    totalHadirEfektif,
+    totalHariKerja,
+    faktorKehadiranRata2,
+  };
+});
+
 const dayLabels = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 
 // ======================
@@ -199,7 +263,7 @@ const dayLabels = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 const selectedEmployee = computed(
   () =>
     employees.value.find(
-      (e) => String(e.id) === String(selectedEmployeeId.value),
+      (e) => String(e.id) === String(selectedemployee_id.value),
     ) || null,
 );
 
@@ -214,7 +278,7 @@ const attendanceSummary = computed(() => {
   const cuti = presensiSummary.totalCuti;
   const absen = presensiSummary.totalAbsen;
 
-  const effective = hadir * 1 + sakit * 0.8 + cuti * 0.4 + absen * 0;
+  const effective = hadir * 1 + sakit * 0.8 + cuti * 0.4;
 
   return { hadir, sakit, cuti, absen, effective };
 });
@@ -233,6 +297,31 @@ const selectedPayslip = computed(() => {
     attendanceSummary.value,
     workingDaysInMonth.value,
   );
+});
+
+// Komponen gaji dasar (per bulan) untuk tampilan tahunan
+const baseSalaryInfo = computed(() => {
+  if (!selectedEmployee.value || jabatanList.value.length === 0) return null;
+
+  const emp = selectedEmployee.value;
+  const jabatanRow =
+    jabatanList.value.find((j) => j.nama === emp.position) || null;
+
+  const gajiPokok = Number(emp.base_salary ?? 0);
+  const tunjanganGaji = jabatanRow ? Number(jabatanRow.tunjangan ?? 0) : 0;
+  const asuransiKesehatan = 450_000;
+  const totalPendapatan = gajiPokok + tunjanganGaji;
+  const totalPotongan = asuransiKesehatan;
+  const gajiSetelahAsuransi = totalPendapatan - totalPotongan;
+
+  return {
+    gajiPokok,
+    tunjanganGaji,
+    asuransiKesehatan,
+    totalPendapatan,
+    totalPotongan,
+    gajiSetelahAsuransi,
+  };
 });
 
 const canGoBack = computed(
@@ -289,21 +378,21 @@ async function loadJabatan() {
 
 async function loadPresensiForCurrentMonth() {
   try {
-    const employee_id = Number(selectedEmployeeId.value);
+    const employeeId = Number(selectedemployee_id.value);
 
     console.log("[loadPresensi] param", {
-      employee_id,
+      employeeId,
       year: periodYear.value,
       month: periodMonth.value + 1,
     });
 
-    if (!employee_id) {
+    if (!employeeId) {
       attendanceByDate.value = {};
       return;
     }
 
     const res = await invoke("cmd_list_presensi", {
-      employee_id: employee_id,
+      employeeId,
       year: periodYear.value,
       month: periodMonth.value + 1,
     });
@@ -355,8 +444,8 @@ async function loadPresensiForCurrentMonth() {
 
 async function loadPresensiSummaryForCurrentMonth() {
   try {
-    const employee_id = Number(selectedEmployeeId.value);
-    if (!employee_id) {
+    const employeeId = Number(selectedemployee_id.value);
+    if (!employeeId) {
       presensiSummary.totalHadir = 0;
       presensiSummary.totalSakit = 0;
       presensiSummary.totalCuti = 0;
@@ -365,7 +454,7 @@ async function loadPresensiSummaryForCurrentMonth() {
     }
 
     const res = await invoke("cmd_get_presensi_summary", {
-      employeeId: employee_id,
+      employeeId,
       year: periodYear.value,
       month: periodMonth.value + 1, // 1..12
     });
@@ -385,6 +474,79 @@ async function loadPresensiSummaryForCurrentMonth() {
   }
 }
 
+async function loadYearlyPayslip() {
+  try {
+    const employeeId = Number(selectedemployee_id.value);
+    if (!employeeId || !selectedEmployee.value || jabatanList.value.length === 0) {
+      yearlyPayslipRows.value = [];
+      return;
+    }
+
+    isLoadingYearlyPayslip.value = true;
+    yearlyPayslipRows.value = [];
+    const rows = [];
+
+    for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+      // ambil summary presensi per bulan (pakai command yang sama)
+      const summary = await invoke("cmd_get_presensi_summary", {
+        employeeId,
+        year: periodYear.value,
+        month: monthIndex + 1, // 1..12
+      });
+
+      const hadir = summary.total_hadir ?? 0;
+      const sakit = summary.total_sakit ?? 0;
+      const cuti = summary.total_cuti ?? 0;
+      const absen = summary.total_absen ?? 0;
+      const effective = hadir * 1 + sakit * 0.8 + cuti * 0.4;
+
+      const attendanceSummaryForMonth = {
+        hadir,
+        sakit,
+        cuti,
+        absen,
+        effective,
+      };
+
+      const workingDays = countWorkingDaysInMonth(
+        periodYear.value,
+        monthIndex,
+      );
+      const periode = buildPeriodeText(monthIndex, periodYear.value);
+
+      const slip = hitungStrukGaji(
+        selectedEmployee.value,
+        jabatanList.value,
+        periode,
+        attendanceSummaryForMonth,
+        workingDays,
+      );
+
+      rows.push({
+        monthIndex,
+        periode,
+        totalHadir: hadir,
+        totalSakit: sakit,
+        totalCuti: cuti,
+        totalAbsen: absen,
+        hariKerja: workingDays,
+        totalHadirEfektif: attendanceSummaryForMonth.effective,
+        gajiSetelahAsuransi: slip.gajiSetelahAsuransi,
+        gajiBersihDiterima: slip.gajiBersihDiterima,
+      });
+    }
+
+    yearlyPayslipRows.value = rows;
+
+  } catch (e) {
+    console.error("Error load yearly payslip:", e);
+    yearlyPayslipRows.value = [];
+  } finally {
+    isLoadingYearlyPayslip.value = false;
+  }
+}
+
+
 // ======================
 // Watchers
 // ======================
@@ -397,11 +559,11 @@ watch(isLoggedIn, (val) => {
 });
 
 watch(
-  [isLoggedIn, selectedEmployeeId, periodYear, periodMonth],
+  [isLoggedIn, selectedemployee_id, periodYear, periodMonth],
   ([loggedIn]) => {
     if (!loggedIn) return;
 
-    if (!selectedEmployeeId.value) {
+    if (!selectedemployee_id.value) {
       attendanceByDate.value = {};
       presensiSummary.totalHadir = 0;
       presensiSummary.totalSakit = 0;
@@ -415,9 +577,32 @@ watch(
   },
 );
 
+watch(
+  [isLoggedIn, selectedemployee_id, periodYear, salaryViewMode],
+  ([loggedIn, empId, year, mode]) => {
+    if (!loggedIn) return;
+    if (mode !== "yearly") return;
+
+    if (!empId) {
+      yearlyPayslipRows.value = [];
+      return;
+    }
+
+    loadYearlyPayslip();
+  },
+);
+
+
 // ======================
 // Handlers
 // ======================
+
+onUnmounted(() => {
+  if (generateSlipTimerId !== null) {
+    clearInterval(generateSlipTimerId);
+    generateSlipTimerId = null;
+  }
+});
 
 function handleLoginSuccess(adminData) {
   admin.value = adminData;
@@ -595,7 +780,7 @@ function handleChangeYear(year) {
 
 // presensi
 function handleSelectDay(dateObj) {
-  if (!selectedEmployeeId.value) return;
+  if (!selectedemployee_id.value) return;
 
   const yyyy = dateObj.getFullYear();
   const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
@@ -644,12 +829,12 @@ function handleCloseAttendanceModal() {
 }
 
 async function handleSaveAttendance() {
-  if (!selectedEmployeeId.value || !attendanceDetail.date) return;
+  if (!selectedemployee_id.value || !attendanceDetail.date) return;
 
   try {
     await invoke("cmd_upsert_presensi", {
       presensi: {
-        employee_id: Number(selectedEmployeeId.value),
+        employee_id: Number(selectedemployee_id.value),
         tanggal: attendanceDetail.date,
         status: attendanceDetail.status,
       },
@@ -665,6 +850,72 @@ async function handleSaveAttendance() {
     console.error("Error upsert presensi:", e);
     window.alert("Gagal menyimpan presensi");
   }
+}
+
+async function generateSlipBatch(mode) {
+  if (isGeneratingSlip.value) return;
+
+  isGeneratingSlip.value = true;
+  lastGenerateSlipDurationMs.value = null;
+
+  // reset & mulai stopwatch
+  if (generateSlipTimerId !== null) {
+    clearInterval(generateSlipTimerId);
+    generateSlipTimerId = null;
+  }
+
+  const start = performance.now();
+
+  generateSlipElapsedMs.value = 0;
+  generateSlipTimerId = setInterval(() => {
+    generateSlipElapsedMs.value = performance.now() - start;
+  }, 100); // update tiap 0,1 detik
+
+  try {
+    // bedakan bulanan vs tahunan
+    if (mode === "single" || mode === "multi") {
+      await invoke("cmd_generate_slip_batch", { mode });
+    } else if (mode === "single_yearly" || mode === "multi_yearly") {
+      const baseMode = mode.startsWith("single") ? "single" : "multi";
+      await invoke("cmd_generate_slip_yearly_batch", { mode: baseMode });
+    } else {
+      throw new Error(`Mode generate tidak dikenal di frontend: ${mode}`);
+    }
+
+    const durationMs = performance.now() - start;
+    lastGenerateSlipDurationMs.value = durationMs;
+    const seconds = (durationMs / 1000).toFixed(2);
+
+    const isYearly = mode.includes("yearly");
+    const isSingle = mode.startsWith("single");
+
+    const jenisText = isYearly ? "struk gaji tahunan" : "struk gaji bulanan";
+    const coreText = isSingle ? "1 core" : "multi core";
+
+    window.alert(
+      `Generate ${jenisText} (${coreText}) selesai dalam ${seconds} detik.\n` +
+        `Silakan cek folder output di sisi desktop.`,
+    );
+  } catch (err) {
+    console.error("Error generate slip:", err);
+    window.alert("Gagal mengenerate struk gaji. Cek log console/backend.");
+  } finally {
+    isGeneratingSlip.value = false;
+    if (generateSlipTimerId !== null) {
+      clearInterval(generateSlipTimerId);
+      generateSlipTimerId = null;
+    }
+  }
+}
+
+
+
+function handleGenerateSlipSingleCore() {
+  generateSlipBatch("single");
+}
+
+function handleGenerateSlipMultiCore() {
+  generateSlipBatch("multi");
 }
 </script>
 
@@ -966,6 +1217,14 @@ async function handleSaveAttendance() {
           >
             Data Gaji Karyawan
           </button>
+          <button
+            type="button"
+            class="tab-nav__item"
+            :class="{ 'is-active': activeReportTab === 'slip' }"
+            @click="activeReportTab = 'slip'"
+          >
+            Generate Struk Gaji (PDF)
+          </button>
         </nav>
 
         <!-- Sub-tab PRESENSI -->
@@ -982,7 +1241,7 @@ async function handleSaveAttendance() {
             <label for="employee-schedule-select">Pilih Karyawan</label>
             <select
               id="employee-schedule-select"
-              v-model="selectedEmployeeId"
+              v-model="selectedemployee_id"
             >
               <option value="">-- Pilih karyawan --</option>
               <option
@@ -1086,7 +1345,7 @@ async function handleSaveAttendance() {
 
         <!-- Sub-tab GAJI -->
         <section
-          v-else
+          v-else-if="activeReportTab === 'gaji'"
           class="card form-card"
         >
           <h2 class="card-title">Data Gaji Karyawan</h2>
@@ -1095,12 +1354,34 @@ async function handleSaveAttendance() {
             master jabatan, dan gaji disesuaikan dengan kehadiran
             (hadir=1, sakit=0,8, cuti=0,4, absen=0).
           </p>
+          <div class="form-row">
+            <label>Mode Laporan</label>
+            <div>
+              <button
+                type="button"
+                class="btn-chip btn-sm"
+                :class="{ 'is-active': salaryViewMode === 'monthly' }"
+                @click="salaryViewMode = 'monthly'"
+              >
+                Bulanan
+              </button>
+              <button
+                type="button"
+                class="btn-chip btn-sm"
+                :class="{ 'is-active': salaryViewMode === 'yearly' }"
+                @click="salaryViewMode = 'yearly'"
+                style="margin-left: 8px"
+              >
+                Tahunan
+              </button>
+            </div>
+          </div>
 
           <div class="form-row">
             <label for="employee-salary-select">Pilih Karyawan</label>
             <select
               id="employee-salary-select"
-              v-model="selectedEmployeeId"
+              v-model="selectedemployee_id"
             >
               <option value="">-- Pilih karyawan --</option>
               <option
@@ -1113,146 +1394,384 @@ async function handleSaveAttendance() {
             </select>
           </div>
 
-          <div
-            v-if="selectedPayslip"
-            class="payslip"
-          >
-            <hr style="margin: 16px 0" />
-            <h3
-              class="card-title"
-              style="font-size: 1rem"
+          <!-- mode BULANAN -->
+          <template v-if="salaryViewMode === 'monthly'">
+            <div
+              v-if="selectedPayslip"
+              class="payslip"
             >
-              Struk Gaji Karyawan
-            </h3>
+              <hr style="margin: 16px 0" />
+              <h3
+                class="card-title"
+                style="font-size: 1rem"
+              >
+                Struk Gaji Karyawan
+              </h3>
 
-            <p>Periode: {{ selectedPayslip.periode }}</p>
-            <p>Nama: {{ selectedPayslip.nama }}</p>
-            <p>NIK: {{ selectedPayslip.nik }}</p>
-            <p>Jabatan: {{ selectedPayslip.jabatan }}</p>
-            <p>Departemen: {{ selectedPayslip.departemen }}</p>
+              <p>Periode: {{ selectedPayslip.periode }}</p>
+              <p>Nama: {{ selectedPayslip.nama }}</p>
+              <p>NIK: {{ selectedPayslip.nik }}</p>
+              <p>Jabatan: {{ selectedPayslip.jabatan }}</p>
+              <p>Departemen: {{ selectedPayslip.departemen }}</p>
 
-            <div style="margin-top: 12px">
-              <strong>Komponen Gaji</strong>
-              <p>
-                Gaji Pokok:
-                {{ formatRupiah(selectedPayslip.gajiPokok) }}
-              </p>
-              <p>
-                Tunjangan Gaji:
-                {{ formatRupiah(selectedPayslip.tunjanganGaji) }}
-              </p>
-              <p>
-                Total Pendapatan:
-                {{ formatRupiah(selectedPayslip.totalPendapatan) }}
-              </p>
+              <div style="margin-top: 12px">
+                <strong>Komponen Gaji</strong>
+                <p>
+                  Gaji Pokok:
+                  {{ formatRupiah(selectedPayslip.gajiPokok) }}
+                </p>
+                <p>
+                  Tunjangan Gaji:
+                  {{ formatRupiah(selectedPayslip.tunjanganGaji) }}
+                </p>
+                <p>
+                  Total Pendapatan:
+                  {{ formatRupiah(selectedPayslip.totalPendapatan) }}
+                </p>
+              </div>
+
+              <div style="margin-top: 12px">
+                <strong>Potongan</strong>
+                <p>
+                  Asuransi Kesehatan:
+                  {{ formatRupiah(selectedPayslip.asuransiKesehatan) }}
+                </p>
+                <p>
+                  Total Potongan:
+                  {{ formatRupiah(selectedPayslip.totalPotongan) }}
+                </p>
+                <p>
+                  Gaji setelah potongan asuransi:
+                  {{ formatRupiah(selectedPayslip.gajiSetelahAsuransi) }}
+                </p>
+              </div>
+
+              <div style="margin-top: 12px">
+                <strong>Rekap Presensi Bulan Ini</strong>
+                <p>
+                  Total kehadiran:
+                  {{ selectedPayslip.totalHadir }}
+                </p>
+                <p>
+                  Total sakit:
+                  {{ selectedPayslip.totalSakit }}
+                </p>
+                <p>
+                  Total cuti:
+                  {{ selectedPayslip.totalCuti }}
+                </p>
+                <p>
+                  Total absen:
+                  {{ selectedPayslip.totalAbsen }}
+                </p>
+                <p>
+                  Total kehadiran efektif:
+                  {{ selectedPayslip.totalHadirEfektif.toFixed(1) }}
+                  dari {{ selectedPayslip.hariKerja }} hari kerja
+                </p>
+                <p>
+                  Faktor kehadiran:
+                  {{ (selectedPayslip.faktorKehadiran * 100).toFixed(2) }}%
+                </p>
+              </div>
+
+              <div style="margin-top: 12px">
+                <p>
+                  <strong>Gaji setelah potongan asuransi: </strong>
+                  {{ formatRupiah(selectedPayslip.gajiSetelahAsuransi) }}
+                </p>
+                <p>
+                  <strong>
+                    Gaji Bersih Diterima (berdasarkan kehadiran):
+                  </strong>
+                  {{ " " + formatRupiah(selectedPayslip.gajiBersihDiterima) }}
+                </p>
+              </div>
             </div>
 
-            <div style="margin-top: 12px">
-              <strong>Potongan</strong>
-              <p>
-                Asuransi Kesehatan:
-                {{ formatRupiah(selectedPayslip.asuransiKesehatan) }}
-              </p>
-              <p>
-                Total Potongan:
-                {{ formatRupiah(selectedPayslip.totalPotongan) }}
-              </p>
-              <p>
-                Gaji setelah potongan asuransi:
-                {{ formatRupiah(selectedPayslip.gajiSetelahAsuransi) }}
-              </p>
-            </div>
-
-            <div style="margin-top: 12px">
-              <strong>Rekap Presensi Bulan Ini</strong>
-              <p>
-                Total kehadiran:
-                {{ selectedPayslip.totalHadir }}
-              </p>
-              <p>
-                Total sakit:
-                {{ selectedPayslip.totalSakit }}
-              </p>
-              <p>
-                Total cuti:
-                {{ selectedPayslip.totalCuti }}
-              </p>
-              <p>
-                Total absen:
-                {{ selectedPayslip.totalAbsen }}
-              </p>
-              <p>
-                Total kehadiran efektif:
-                {{ selectedPayslip.totalHadirEfektif.toFixed(1) }}
-                dari {{ selectedPayslip.hariKerja }} hari kerja
-              </p>
-              <p>
-                Faktor kehadiran:
-                {{ (selectedPayslip.faktorKehadiran * 100).toFixed(2) }}%
-              </p>
-            </div>
-
-            <div style="margin-top: 12px">
-              <p>
-                <strong>Gaji setelah potongan asuransi: </strong>
-                {{ formatRupiah(selectedPayslip.gajiSetelahAsuransi) }}
-              </p>
-              <p>
+            <div class="periode-toolbar">
+              <div class="periode-toolbar__info">
+                Periode aktif:
                 <strong>
-                  Gaji Bersih Diterima (berdasarkan kehadiran):
+                  {{ MONTH_NAMES_ID[periodMonth] }} {{ periodYear }}
                 </strong>
-                {{ " " + formatRupiah(selectedPayslip.gajiBersihDiterima) }}
+              </div>
+
+              <div class="periode-toolbar__buttons">
+                <button
+                  type="button"
+                  class="btn-secondary-outline btn-sm"
+                  @click="handlePrevMonth"
+                  :disabled="!canGoBack"
+                >
+                  Back
+                </button>
+
+                <button
+                  type="button"
+                  class="btn-secondary-outline btn-sm"
+                  @click="handleNextMonth"
+                  :disabled="!canGoNext"
+                >
+                  Next
+                </button>
+
+                <button
+                  type="button"
+                  class="btn-chip btn-sm"
+                  :class="{ 'is-active': periodYear === 2025 }"
+                  @click="handleChangeYear(2025)"
+                >
+                  2025
+                </button>
+
+                <button
+                  type="button"
+                  class="btn-chip btn-sm"
+                  :class="{ 'is-active': periodYear === 2026 }"
+                  @click="handleChangeYear(2026)"
+                >
+                  2026
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <!-- mode TAHUNAN -->
+          <template v-else>
+            <div class="periode-toolbar">
+              <div class="periode-toolbar__info">
+                Tahun aktif:
+                <strong>{{ periodYear }}</strong>
+              </div>
+
+              <div class="periode-toolbar__buttons">
+                <button
+                  type="button"
+                  class="btn-chip btn-sm"
+                  :class="{ 'is-active': periodYear === 2025 }"
+                  @click="handleChangeYear(2025)"
+                >
+                  2025
+                </button>
+
+                <button
+                  type="button"
+                  class="btn-chip btn-sm"
+                  :class="{ 'is-active': periodYear === 2026 }"
+                  @click="handleChangeYear(2026)"
+                >
+                  2026
+                </button>
+              </div>
+            </div>
+
+            <div style="margin-top: 16px">
+              <p v-if="!selectedEmployee">
+                Pilih karyawan terlebih dahulu untuk melihat laporan tahunan.
+              </p>
+
+              <p v-else-if="isLoadingYearlyPayslip">
+                Memuat laporan tahunan {{ periodYear }}...
+              </p>
+
+              <div
+                v-else-if="yearlyPayslipRows.length"
+                class="payslip"
+              >
+                <hr style="margin: 16px 0" />
+                <h3
+                  class="card-title"
+                  style="font-size: 1rem"
+                >
+                  Struk Gaji Tahunan Karyawan
+                </h3>
+
+                <p>Tahun: {{ periodYear }}</p>
+
+                <p>Nama: {{ selectedEmployee.name }}</p>
+                <p>NIK: {{ selectedEmployee.nik }}</p>
+                <p>Jabatan: {{ selectedEmployee.position }}</p>
+                <p>Departemen: {{ selectedEmployee.department }}</p>
+
+                <div
+                  v-if="baseSalaryInfo"
+                  style="margin-top: 12px"
+                >
+                  <strong>Komponen Gaji (per bulan)</strong>
+                  <p>
+                    Gaji Pokok:
+                    {{ formatRupiah(baseSalaryInfo.gajiPokok) }}
+                  </p>
+                  <p>
+                    Tunjangan Gaji:
+                    {{ formatRupiah(baseSalaryInfo.tunjanganGaji) }}
+                  </p>
+                  <p>
+                    Total Pendapatan:
+                    {{ formatRupiah(baseSalaryInfo.totalPendapatan) }}
+                  </p>
+                  <p>
+                    Asuransi Kesehatan:
+                    {{ formatRupiah(baseSalaryInfo.asuransiKesehatan) }}
+                  </p>
+                  <p>
+                    Gaji setelah potongan asuransi:
+                    {{ formatRupiah(baseSalaryInfo.gajiSetelahAsuransi) }}
+                  </p>
+                </div>
+
+                <div style="margin-top: 12px">
+                  <strong>Rekap Presensi &amp; Gaji per Bulan</strong>
+                  <div
+                    class="table-wrapper"
+                    style="margin-top: 8px"
+                  >
+                    <table class="employee-table">
+                      <thead>
+                        <tr>
+                          <th>Bulan</th>
+                          <th>Hadir</th>
+                          <th>Sakit</th>
+                          <th>Cuti</th>
+                          <th>Absen</th>
+                          <th>Kehadiran Efektif / Hari Kerja</th>
+                          <th>Gaji Akhir</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="row in yearlyPayslipRows"
+                          :key="row.monthIndex"
+                        >
+                          <td>{{ MONTH_NAMES_ID[row.monthIndex] }}</td>
+                          <td>{{ row.totalHadir }}</td>
+                          <td>{{ row.totalSakit }}</td>
+                          <td>{{ row.totalCuti }}</td>
+                          <td>{{ row.totalAbsen }}</td>
+                          <td>
+                            {{ row.totalHadirEfektif.toFixed(1) }}
+                            /
+                            {{ row.hariKerja }}
+                          </td>
+                          <td>{{ formatRupiah(row.gajiBersihDiterima) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style="margin-top: 12px">
+                  <strong>Ringkasan Tahun Ini</strong>
+                  <p>
+                    Total kehadiran:
+                    {{ yearlyPayslipTotals.totalHadir }} hari
+                  </p>
+                  <p>
+                    Total kehadiran efektif:
+                    {{ yearlyPayslipTotals.totalHadirEfektif.toFixed(1) }}
+                    dari
+                    {{ yearlyPayslipTotals.totalHariKerja }}
+                    hari kerja
+                  </p>
+                  <p>
+                    Faktor kehadiran rata-rata:
+                    {{
+                      (yearlyPayslipTotals.faktorKehadiranRata2 * 100).toFixed(2)
+                    }}%
+                  </p>
+                  <p>
+                    Total gaji bersih dibayarkan setahun:
+                    {{ formatRupiah(yearlyPayslipTotals.totalGajiBersih) }}
+                  </p>
+                </div>
+              </div>
+
+              <p v-else>
+                Tidak ada data laporan tahunan untuk tahun ini.
               </p>
             </div>
-          </div>
-
-          <div class="periode-toolbar">
-            <div class="periode-toolbar__info">
-              Periode aktif:
-              <strong>
-                {{ MONTH_NAMES_ID[periodMonth] }} {{ periodYear }}
-              </strong>
-            </div>
-
-            <div class="periode-toolbar__buttons">
-              <button
-                type="button"
-                class="btn-secondary-outline btn-sm"
-                @click="handlePrevMonth"
-                :disabled="!canGoBack"
-              >
-                Back
-              </button>
-
-              <button
-                type="button"
-                class="btn-secondary-outline btn-sm"
-                @click="handleNextMonth"
-                :disabled="!canGoNext"
-              >
-                Next
-              </button>
-
-              <button
-                type="button"
-                class="btn-chip btn-sm"
-                :class="{ 'is-active': periodYear === 2025 }"
-                @click="handleChangeYear(2025)"
-              >
-                2025
-              </button>
-
-              <button
-                type="button"
-                class="btn-chip btn-sm"
-                :class="{ 'is-active': periodYear === 2026 }"
-                @click="handleChangeYear(2026)"
-              >
-                2026
-              </button>
-            </div>
-          </div>
+          </template>
         </section>
+
+        <!-- Sub-tab GENERATE STRUK GAJI (PDF) -->
+        <section
+          v-else
+          class="card form-card"
+        >
+          <h2 class="card-title">Generate Struk Gaji (PDF)</h2>
+          <p class="card-description">
+            Fitur ini akan mengenerate struk gaji untuk semua karyawan dari
+            Januari 2025 sampai Desember 2026 dalam bentuk file PDF. Setiap
+            karyawan akan memiliki folder sendiri berisi file struk per bulan.
+          </p>
+
+          <div class="form-row">
+            <p>
+              Mode <strong>Single Core</strong> akan memproses secara berurutan
+              (lebih lambat tapi stabil). Mode <strong>Multi Core</strong> akan
+              memproses secara paralel untuk memanfaatkan banyak core CPU.
+            </p>
+          </div>
+
+          <div class="form-row p-4">
+            <button
+              type="button"
+              class="btn-primary"
+              :disabled="isGeneratingSlip"
+              @click="handleGenerateSlipSingleCore"
+            >
+              Generate Bulanan (1 Core)
+            </button>
+
+            <button
+              type="button"
+              class="btn-secondary"
+              :disabled="isGeneratingSlip"
+              style="margin-left: 8px"
+              @click="handleGenerateSlipMultiCore"
+            >
+              Generate Bulanan (Multi Core)
+            </button>
+
+            <button
+              type="button"
+              class="btn-primary"
+              :disabled="isGeneratingSlip"
+              @click="() => generateSlipBatch('single_yearly')"
+            >
+              Generate Tahunan (1 Core)
+            </button>
+
+            <button
+              type="button"
+              class="btn-secondary"
+              :disabled="isGeneratingSlip"
+              style="margin-left: 8px"
+              @click="() => generateSlipBatch('multi_yearly')"
+            >
+              Generate Tahunan (Multi Core)
+            </button>
+
+          </div>
+
+          <p
+            v-if="isGeneratingSlip"
+            style="margin-top: 8px; font-size: 0.9rem;"
+          >
+            Sedang mengenerate struk gaji, mohon tunggu sampai proses selesai...
+            <br />
+            <span>Waktu berjalan: {{ generateSlipElapsedLabel }}</span>
+          </p>
+
+          <p
+            v-else-if="lastGenerateSlipDurationLabel"
+            style="margin-top: 8px; font-size: 0.9rem;"
+          >
+            Waktu proses terakhir: {{ lastGenerateSlipDurationLabel }}.
+          </p>
+        </section>
+
       </main>
 
       <!-- MODAL PRESENSI -->

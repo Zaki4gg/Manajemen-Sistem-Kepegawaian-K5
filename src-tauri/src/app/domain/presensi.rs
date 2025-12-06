@@ -1,15 +1,21 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Presensi {
-    pub id: i64,
-    pub employee_id: i64,   // SAMA dengan kolom di Supabase
-    pub tanggal: String,    // "YYYY-MM-DD"
-    pub status: String,     // "hadir" | "sakit" | "cuti" | "absen"
+macro_rules! define_presensi_types {
+    ($($common:tt)*) => {
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct Presensi {
+            pub id: i64,
+            $($common)*
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct NewPresensi {
+            $($common)*
+        }
+    };
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NewPresensi {
+define_presensi_types! {
     pub employee_id: i64,
     pub tanggal: String,
     pub status: String,

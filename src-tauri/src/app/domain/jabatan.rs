@@ -6,9 +6,4 @@ pub struct Jabatan {
     pub tunjangan: f64, // numeric(10,2) -> bisa pakai f64
 }
 
-// Kalau mau, bisa juga siapkan struct untuk insert/update
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NewJabatan {
-    pub nama: String,
-    pub tunjangan: f64,
-}
+pub type NewJabatan = Jabatan;

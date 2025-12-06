@@ -155,7 +155,7 @@ Penjelasan:
 3. **commands.rs**
 
 ```rust
-use crate::app::domain::employee::{Employee, NewEmployee};
+use crate::app::domain::employee::{Employee, NewEmployeeloyee};
 use crate::app::services::{employee_service, admin_service};
 use crate::app::domain::admin::Admin;      
 use crate::app::domain::jabatan::{Jabatan, NewJabatan};
@@ -170,7 +170,7 @@ pub async fn cmd_list_employees() -> Result<Vec<Employee>, String> {
 }
 
 #[tauri::command]
-pub async fn cmd_add_employee(new_emp: NewEmployee) -> Result<(), String> {
+pub async fn cmd_add_employee(new_emp: NewEmployeeloyee) -> Result<(), String> {
     employee_service::add_employee(new_emp).await
 }
 
@@ -301,7 +301,7 @@ pub struct Employee {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NewEmployee {
+pub struct NewEmployeeloyee {
     pub nik: String,
     pub name: String,
     pub department: String,
@@ -312,10 +312,10 @@ pub struct NewEmployee {
 ```
 
 Penjelasan:
-- Serialize dan Deserialize dari serde memungkinkan data `Employee` dan `NewEmployee` dipertukarkan dengan frontend melalui JSON.
+- Serialize dan Deserialize dari serde memungkinkan data `Employee` dan `NewEmployeeloyee` dipertukarkan dengan frontend melalui JSON.
 - Derive Debug dan Clone memudahkan debugging serta penggandaan struct.
 - `Employee` mewakili data pegawai yang sudah tersimpan di database sehingga memiliki id.
-- `NewEmployee` digunakan saat menambah pegawai baru, belum memiliki id karena akan dibuat oleh database.
+- `NewEmployeeloyee` digunakan saat menambah pegawai baru, belum memiliki id karena akan dibuat oleh database.
 
 8. **jabatan.rs**
 
@@ -489,7 +489,7 @@ Penjelasan:
 14. **employee_service.rs**
 
 ```rust
-use crate::app::domain::employee::{Employee, NewEmployee};
+use crate::app::domain::employee::{Employee, NewEmployeeloyee};
 use crate::app::infra::supabase::Supabase;
 use serde_json::json;
 
@@ -519,7 +519,7 @@ pub async fn list_employees() -> Result<Vec<Employee>, String> {
     Ok(data)
 }
 
-pub async fn add_employee(new_emp: NewEmployee) -> Result<(), String> {
+pub async fn add_employee(new_emp: NewEmployeeloyee) -> Result<(), String> {
     let sb = Supabase::new();
     let url = sb.endpoint("employees");
 
@@ -604,9 +604,9 @@ pub async fn delete_employee(id: i64) -> Result<(), String> {
 ```
 
 Penjelasan:
-- Bagian import mengambil model Employee dan NewEmployee dari domain, Supabase untuk koneksi REST, serta serde_json::json untuk membentuk payload JSON.
+- Bagian import mengambil model Employee dan NewEmployeeloyee dari domain, Supabase untuk koneksi REST, serta serde_json::json untuk membentuk payload JSON.
 - Fungsi `list_employees` mengambil seluruh data pegawai dari tabel employees dengan query `select=*` dan sorting berdasarkan id, lalu mem-parsing JSON menjadi `Vec<Employee>` untuk dikirim ke frontend.
-- Fungsi `add_employee` menerima data `NewEmployee`, menyusunnya ke dalam JSON body, dan mengirim request POST ke Supabase untuk menambah data baru ke tabel employees.
+- Fungsi `add_employee` menerima data `NewEmployeeloyee`, menyusunnya ke dalam JSON body, dan mengirim request POST ke Supabase untuk menambah data baru ke tabel employees.
 - Fungsi `update_employee` mengirim request PATCH berdasarkan id pegawai, memperbarui data sesuai field yang diterima pada struct Employee, dan mengembalikan status kesuksesan operasi.
 - Fungsi `delete_employee` menjalankan operasi DELETE ke endpoint employees dengan filter id, dan mengembalikan hasil berupa `Ok(())` jika berhasil atau error jika gagal.
 - Setiap operasi HTTP menyertakan header apikey dan Authorization untuk autentikasi Supabase dan menggunakan .await karena semua fungsi berjalan secara `asynchronous`.

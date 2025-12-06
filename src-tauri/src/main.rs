@@ -4,6 +4,8 @@
 mod app;
 mod commands;
 
+
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -17,8 +19,11 @@ fn main() {
             commands::cmd_update_jabatan,
             commands::cmd_delete_jabatan,
             commands::cmd_list_presensi,
-            commands::cmd_get_presensi_summary, // <- TAMBAHAN
+            commands::cmd_get_presensi_summary,
             commands::cmd_upsert_presensi,
+            commands::cmd_generate_slip_batch,
+            commands::cmd_generate_slip_yearly_batch,
+
         ])
         .run(tauri::generate_context!())
         .expect("error running tauri application");
