@@ -1,0 +1,1746 @@
+# Manajemen Sistem Kepegawaian K5
+_A Functional Programming Approach with Rust_  
+**Authors:** Bagas Yoga Pratama Pramudika, Michael Peter Valentino Situmeang, Muhammad Zaki Afriza, Rafi Baydar Athaillah
+
+---
+
+## Abstract
+
+Proyek ini bertujuan untuk mengembangkan Sistem Manajemen Karyawan menggunakan Bahasa Pemrograman Rust dan Framework Tauri. Sistem ini dirancang untuk menangani operasi CRUD (Create, Read, Update, Delete) terkait data karyawan, jabatan, serta pencatatan presensi harian. Backend aplikasi dibangun menggunakan Rust untuk memanfaatkan keamanan memori dan performa tingginya, sementara antarmuka pengguna berbasis desktop menggunakan Tauri. Penyimpanan data ditangani secara eksternal menggunakan Supabase melalui komunikasi REST API.
+
+---
+
+## Introduction
+
+Pengelolaan data kepegawaian di banyak organisasi kecil masih dilakukan secara manual, misalnya dengan spreadsheet atau catatan terpisah. Hal ini menyulitkan ketika jumlah karyawan bertambah, karena:
+
+- Data mudah tidak sinkron (antara presensi, gaji, dan data karyawan).
+- Pencarian dan rekap membutuhkan waktu lama.
+- Rentan terhadap kesalahan input dan penghitungan.
+
+Project ini mencoba menyelesaikan masalah tersebut dengan sebuah aplikasi Manajemen Sistem Kepegawaian yang terintegrasi:
+
+- Menyimpan data karyawan secara terstruktur.
+- Mengelola presensi (hadir/tidak hadir) melalui tampilan kalender.
+- Menjadi dasar untuk fitur penggajian dan laporan.
+
+**Mengapa Rust?**
+
+Rust digunakan pada proyek ini karena jaminan keamanan memori (memory safety) tanpa memerlukan garbage collector. Hal ini memastikan aplikasi berjalan dengan performa yang dapat diprediksi. Selain itu, sistem tipe data Rust yang kuat membantu mencegah runtime errors sejak tahap kompilasi.
+
+**Mengapa memasukkan konsep Functional Programming?**
+
+- Mempermudah reasoning terhadap logika bisnis karena fungsi dibuat pure (output hanya ditentukan oleh input).
+- Mendorong immutability sehingga bug terkait shared state bisa dikurangi.
+- Memanfaatkan iterators dan higher-order functions seperti `map`, `filter` untuk memproses list data karyawan dan presensi dengan cara yang deklaratif.
+
+**Keunikan solusi:**
+
+Aplikasi kami menggabungkan kecepatan Rust di belakang layar dengan tampilan modern yang ringan. Kami juga tidak perlu menginstall database ribet di komputer, karena semua data tersimpan aman di cloud (Supabase).
+
+---
+
+## Background and Concepts
+
+### Technology Stack
+
+- **Rust**
+  Bahasa pemrograman sistem yang digunakan untuk menangani seluruh logika backend aplikasi. Rust dipilih karena kemampuannya mengelola memori secara aman tanpa Garbage Collector, menjamin performa tinggi dan stabilitas aplikasi.
+
+- **Tauri**
+  Framework untuk membangun aplikasi desktop yang sangat ringan. Tauri bekerja dengan memanfaatkan WebView bawaan sistem operasi untuk merender tampilan, sementara logika intinya dijalankan langsung oleh Rust. Pendekatan ini memungkinkan pembuatan aplikasi yang aman, sangat efisien dalam penggunaan memori, dan memiliki ukuran installer yang kecil.
+
+- **Supabase**
+  Platform Backend-as-a-Service (BaaS) yang menyediakan database PostgreSQL secara cloud. Dalam proyek ini, Supabase bertindak sebagai pusat penyimpanan data yang diakses melalui protokol REST API, sehingga kita tidak perlu mengelola server database lokal.
+
+- **Tokio**
+  Runtime asinkron (Asynchronous Runtime) untuk Rust. Tokio bertugas menangani operasi berat seperti permintaan jaringan (network request) di latar belakang (background thread), sehingga antarmuka aplikasi tidak macet (freeze) saat menunggu balasan dari server.
+
+- **Reqwest**
+  HTTP Client untuk Rust yang mudah digunakan. Library ini berfungsi untuk melakukan panggilan API (GET, POST, PATCH, DELETE) ke server Supabase, mengirimkan data input pengguna, dan menerima respon dari server.
+
+- **Serde**
+  Framework untuk memproses data JSON. Serde bertugas menerjemahkan objek data Rust (Struct) menjadi format JSON agar bisa dikirim ke API, dan sebaliknya menerjemahkan respon JSON dari API menjadi objek Rust yang bisa diolah oleh program.
+
+### Functional Programming Concepts
+
+Beberapa konsep functional programming yang menjadi panduan desain:
+
+- **Immutability**  
+  - Variabel menggunakan `let` sebisa mungkin tanpa `mut`.
+  - Data karyawan diproses dengan membuat salinan baru (misal `map`/`filter`) daripada memodifikasi in-place.
+
+- **Pure Functions**  
+  - Fungsi bisnis seperti perhitungan total gaji atau filter karyawan aktif dibuat tanpa side effect:
+    - Tidak membaca/menulis ke global state.
+    - Hanya menerima parameter dan mengembalikan nilai.
+
+- **Higher-Order Functions & Iterators**  
+  - Penggunaan method seperti `.iter()`, `.map()`, `.filter()`, `.fold()` di koleksi karyawan dan presensi.
+  - Mengurangi penggunaan loop imperatif dan index manual.
+
+- **Pattern Matching**  
+  - `match` pada `Result<T, E>` untuk menangani keberhasilan/gagalnya operasi database atau I/O.
+  - Menghindari banyak `if-else` dan membuat alur error handling lebih jelas.
+
+---
+
+## Source Code and Explanation
+
+### Main dan Konfigurasi
+
+1.  **main.rs**
+
+```rust
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod app;
+mod commands;
+
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            commands::cmd_list_employees,
+            commands::cmd_add_employee,
+            commands::cmd_admin_login,
+            commands::cmd_update_employee,
+            commands::cmd_delete_employee,
+            commands::cmd_list_jabatan,
+            commands::cmd_add_jabatan,
+            commands::cmd_update_jabatan,
+            commands::cmd_delete_jabatan,
+            commands::cmd_list_presensi,
+            commands::cmd_get_presensi_summary,
+            commands::cmd_upsert_presensi,
+            commands::cmd_generate_slip_batch,
+            commands::cmd_generate_slip_yearly_batch,
+
+        ])
+        .run(tauri::generate_context!())
+        .expect("error running tauri application");
+}
+```
+
+Penjelasan:
+- Baris pertama menunjukkan atribut untuk seluruh crate yang mengatur perilaku aplikasi ketika dijalankan di Windows
+- Baris ke tiga dan empat bertujuan untuk memanggil modul app dan coomand.
+- Di fungsi `main`, aplikasi Tauri dibangun menggunakan pola builder. `tauri::Builder::default()` membuat instance default, lalu memanggil `.invoke_handler(tauri::generate_handler![ ... ])` untuk mendaftarkan fungsi-fungsi rust yang akan di ekspor sebagai command ke front-end Tauri.
+- `tauri::generate_handler!` menerima daftar fungsi dari modul `commands`.
+- `.run(tauri::generate_context!())` akan dipanggil dan membaca konfigurasi dari `tauri.conf.json` lalu menjalankan event loop Tauri: membuka window aplikasi, menghubungkan event, dan menangani command sampai aplikasi ditutup.
+- Hasil dari `run` adalah `Result`, sehingga diakhiri dengan `expect(...);` yang akan membuat Tauri "Panic" dengan pesan itu, sehingga kita tau kalau ada masalah ketika kita menjalankan aplikasi.
+
+2.  **lib.rs**
+
+```rust
+#[tauri::command]
+fn greet(name: &str) -> String {
+    format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![greet])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+```
+
+Penjelasan:
+- Baris pertama menggunakan atribut #[tauri::command] untuk menandai bahwa fungsi di bawahnya bisa dipanggil dari frontend melalui invoke() pada sisi JavaScript Tauri.
+- Baris kedua hingga keempat mendefinisikan fungsi greet, menerima parameter nama berupa &str, dan mengembalikan string yang dibentuk menggunakan format! — fungsi ini nantinya akan diekspor sebagai command ke frontend.
+- Pada atribut baris keenam, #[cfg_attr(mobile, tauri::mobile_entry_point)] memastikan fungsi run akan menjadi entry point aplikasi jika dibangun untuk perangkat mobile, sedangkan pada desktop atribut ini diabaikan.
+- Di fungsi run, aplikasi Tauri dibangun dengan pola builder: tauri::Builder::default() membuat instance dasar, kemudian .plugin(...) menambahkan plugin pembuka file/URL, dan .invoke_handler(tauri::generate_handler![greet]) mendaftarkan fungsi greet sebagai command yang dapat dipanggil dari frontend.
+- Makro tauri::generate_handler! menerima daftar fungsi command dan menghasilkan handler internal Tauri agar dapat berkomunikasi dengan frontend.
+- .run(tauri::generate_context!()) akan membaca konfigurasi dari tauri.conf.json, lalu menjalankan event loop Tauri untuk membuka jendela aplikasi dan menangani event maupun command sampai aplikasi ditutup.
+- .expect("error while running tauri application") digunakan sebagai error handling yang menampilkan pesan jika aplikasi gagal dijalankan.
+
+3. **commands.rs**
+
+```rust
+use crate::app::domain::employee::{Employee, NewEmployee};
+use crate::app::domain::admin::Admin;
+use crate::app::domain::jabatan::{Jabatan, NewJabatan};
+use crate::app::domain::presensi::{Presensi, NewPresensi};
+use crate::app::domain::presensi_summary::PresensiSummary;
+use crate::app::services::{
+    employee_service,
+    admin_service,
+    jabatan_service,
+    presensi_service,
+    payslip_pdf_service,
+};
+
+#[tauri::command]
+pub async fn cmd_list_employees() -> Result<Vec<Employee>, String> {
+    employee_service::list_employees().await
+}
+
+#[tauri::command]
+pub async fn cmd_add_employee(new_emp: NewEmployee) -> Result<(), String> {
+    employee_service::add_employee(new_emp).await
+}
+
+#[tauri::command]
+pub async fn cmd_admin_login(email: String, password: String) -> Result<Admin, String> {
+    admin_service::login_admin(email, password).await
+}
+
+#[tauri::command]
+pub async fn cmd_update_employee(employee: Employee) -> Result<(), String> {
+    employee_service::update_employee(employee).await
+}
+
+#[tauri::command]
+pub async fn cmd_delete_employee(id: i64) -> Result<(), String> {
+    employee_service::delete_employee(id).await
+}
+
+#[tauri::command]
+pub async fn cmd_list_jabatan() -> Result<Vec<Jabatan>, String> {
+    jabatan_service::list_jabatan().await
+}
+
+#[tauri::command]
+pub async fn cmd_add_jabatan(jabatan: NewJabatan) -> Result<(), String> {
+    jabatan_service::add_jabatan(jabatan).await
+}
+
+#[tauri::command]
+pub async fn cmd_update_jabatan(nama: String, jabatan: NewJabatan) -> Result<(), String> {
+    jabatan_service::update_jabatan(nama, jabatan).await
+}
+
+#[tauri::command]
+pub async fn cmd_delete_jabatan(nama: String) -> Result<(), String> {
+    jabatan_service::delete_jabatan(nama).await
+}
+
+#[tauri::command]
+pub async fn cmd_list_presensi(
+    employee_id: i64,
+    year: i32,
+    month: i32,
+) -> Result<Vec<Presensi>, String> {
+    presensi_service::list_presensi_for_employee_month(employee_id, year, month).await
+}
+
+#[tauri::command]
+pub async fn cmd_get_presensi_summary(
+    employee_id: i64,
+    year: i32,
+    month: i32,
+) -> Result<PresensiSummary, String> {
+    presensi_service::get_presensi_summary_for_employee_month(employee_id, year, month).await
+}
+
+#[tauri::command]
+pub async fn cmd_upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
+    presensi_service::upsert_presensi(presensi).await
+}
+
+#[tauri::command]
+pub async fn cmd_generate_slip_batch(mode: String) -> Result<(), String> {
+    use crate::app::services::payslip_pdf_service::GenerateMode;
+
+    let mode = match mode.as_str() {
+        "single" => GenerateMode::SingleCore,
+        "multi"  => GenerateMode::MultiCore,
+        other    => return Err(format!("Mode generate tidak dikenal: {}", other)),
+    };
+
+    let output_root = "./struk_gaji_output";
+
+    payslip_pdf_service::generate_slips_jan_2025_to_dec_2026(output_root, mode).await
+}
+
+#[tauri::command]
+pub async fn cmd_generate_slip_yearly_batch(mode: String) -> Result<(), String> {
+    use crate::app::services::payslip_pdf_service::GenerateMode;
+
+    let mode = match mode.as_str() {
+        "single" => GenerateMode::SingleCore,
+        "multi"  => GenerateMode::MultiCore,
+        other    => return Err(format!("Mode generate tidak dikenal: {}", other)),
+    };
+
+    let output_root = "./struk_gaji_output_tahunan";
+
+    payslip_pdf_service::generate_yearly_slips_2025_2026(output_root, mode).await
+}
+```
+
+Penjelasan:
+- Baris awal digunakan untuk mengimpor tipe domain (`Employee, Admin, Jabatan, Presensi`) dan modul-modul service yang berisi logika bisnis.
+- Setiap fungsi diberi atribut `#[tauri::command]` agar dapat dipanggil dari frontend melalui `invoke()` pada aplikasi Tauri.
+- Semua fungsi command bersifat `asynchronous` sehingga pemanggilan ke service berjalan tanpa menghambat UI.
+- Command terkait `Employee` (`cmd_list_employees, cmd_add_employee, cmd_update_employee, cmd_delete_employee`) menjalankan operasi CRUD melalui `employee_service`.
+- `cmd_admin_login` memanggil `admin_service` untuk melakukan validasi login admin dan mengembalikan objek Admin jika berhasil.
+- Command terkait `Jabatan` (`cmd_list_jabatan, cmd_add_jabatan, cmd_update_jabatan, cmd_delete_jabatan`) meneruskan operasi data jabatan ke `jabatan_service`.
+- Command terkait `Presensi` (`cmd_list_presensi, cmd_upsert_presensi`) menangani pengambilan dan penyimpanan presensi melalui `presensi_service`.
+- Semua fungsi mengembalikan `Result<>` sebagai mekanisme pengiriman data sukses atau pesan error ke frontend.
+
+4. **src/app/mod.rs**
+
+```rust
+pub mod domain;
+pub mod infra;
+pub mod services;
+```
+
+Penjelasan:
+- Baris-baris ini mendeklarasikan tiga modul utama dalam folder app yaitu `domain`, `infra`, dan `services`, sehingga dapat digunakan oleh seluruh bagian aplikasi.
+- `pub mod domain;` membuka akses ke modul domain yang berisi definisi struktur data inti/entitas seperti `Employee`, `Admin`, `Jabatan`, dan `Presensi`.
+- `pub mod infra;` membuka akses ke modul infra (infrastruktur) yang biasanya berisi implementasi koneksi database, repository, atau komunikasi dengan sistem eksternal.
+- `pub mod services;` membuka akses ke modul services yang mengatur logika bisnis, menjadi penghubung antara command (Tauri backend) dan layer database/infrastruktur.
+
+5. **build.rs**
+
+```rust
+fn main() {
+    tauri_build::build()
+}
+```
+
+Penjelasan:
+- Fungsi `main` pada file `build.rs` akan dijalankan sebelum proses kompilasi utama, karena `build.rs` adalah build script di Rust.
+- Pada baris di dalam fungsi, `tauri_build::build()` dipanggil untuk melakukan persiapan build aplikasi Tauri, seperti:
+  - memproses file konfigurasi `tauri.conf.json`.
+  - menghasilkan aset atau kode tambahan yang diperlukan saat compile
+  - menyesuaikan konfigurasi build sesuai platform (Windows, Linux, macOS, atau mobile)
+- Build script ini memastikan bahwa hasil build sudah sesuai kebutuhan runtime Tauri sebelum aplikasi dikompilasi dan dijalankan.
+
+### Domain
+
+6. **admin.rs**
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Admin {
+    pub email: String,
+}
+```
+
+Penjelasan:
+- Baris `use serde::{Deserialize, Serialize};` mengimpor trait yang memungkinkan struct di-serialize dan di-deserialize (misalnya untuk komunikasi frontend–backend lewat JSON).
+- Atribut `#[derive(Debug, Clone, Serialize, Deserialize)]` otomatis memberikan kemampuan:
+  - Debug → bisa dicetak untuk keperluan debugging
+  - Clone → bisa digandakan nilainya
+  - Serialize & Deserialize → data dapat dikirim/diterima melalui Tauri command dan database dengan format JSON
+- pub struct Admin adalah model domain untuk Admin yang memiliki satu field publik `email: String`, sehingga bisa diakses di seluruh aplikasi.
+
+7. **employee.rs**
+
+```rust
+use serde::{Deserialize, Serialize};
+
+macro_rules! define_employee_types {
+    ($($common:tt)*) => {
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct Employee {
+            pub id: i64,
+            $($common)*
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct NewEmployee {
+            $($common)*
+        }
+    };
+}
+
+define_employee_types! {
+    pub nik: String,
+    pub name: String,
+    pub department: String,
+    pub position: String,
+    pub base_salary: i64,
+}
+```
+
+Penjelasan:
+- Serialize dan Deserialize dari serde memungkinkan data `Employee` dan `NewEmployeeloyee` dipertukarkan dengan frontend melalui JSON.
+- Derive Debug dan Clone memudahkan debugging serta penggandaan struct.
+- `Employee` mewakili data pegawai yang sudah tersimpan di database sehingga memiliki id.
+- `NewEmployeeloyee` digunakan saat menambah pegawai baru, belum memiliki id karena akan dibuat oleh database.
+
+8. **jabatan.rs**
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Jabatan {
+    pub nama: String,
+    pub tunjangan: f64,
+}
+
+pub type NewJabatan = Jabatan;
+```
+
+Penjelasan:
+- Mengimpor Serialize dan Deserialize agar struct dapat dikirim/diterima dalam format JSON saat berkomunikasi dengan frontend.
+- Debug dan Clone otomatis diimplementasikan untuk memudahkan debugging dan penggandaan data.
+- `Jabatan` merepresentasikan data jabatan yang sudah ada di sistem, memiliki field nama dan tunjangan.
+- `NewJabatan` digunakan saat menambahkan data jabatan baru, memiliki field yang sama namun tanpa identitas tambahan dari database.
+
+9. **presensi.rs**
+
+```rust
+use serde::{Deserialize, Serialize};
+
+macro_rules! define_presensi_types {
+    ($($common:tt)*) => {
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct Presensi {
+            pub id: i64,
+            $($common)*
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct NewPresensi {
+            $($common)*
+        }
+    };
+}
+
+define_presensi_types! {
+    pub employee_id: i64,
+    pub tanggal: String,
+    pub status: String,
+}
+```
+
+Penjelasan:
+- Serialize dan Deserialize dari serde memungkinkan data presensi dikonversi ke/dari JSON untuk komunikasi dengan frontend.
+- Debug dan Clone memudahkan debugging serta penggandaan objek data.
+- `Presensi` merepresentasikan data presensi yang sudah tersimpan di sistem, sehingga memiliki id serta employee_id, tanggal, dan status.
+- `NewPresensi` digunakan saat menambahkan atau memperbarui data presensi dan tidak memiliki id karena nilai tersebut biasanya dihasilkan oleh database.
+
+10. **presensi_summary.rs**
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresensiSummary {
+    pub total_hadir: i64,
+    pub total_sakit: i64,
+    pub total_cuti: i64,
+    pub total_absen: i64,
+}
+```
+
+Penjelasan:
+
+11. **src/app/domain/mod.rs**
+
+```rust
+pub mod employee;
+pub mod admin;
+pub mod jabatan;
+pub mod presensi;
+pub mod presensi_summary;
+```
+
+Penjelasan:
+- File ini mendeklarasikan modul `domain` yang ada dalam folder domain, sehingga dapat digunakan oleh bagian lain aplikasi.
+- `pub mod employee;`, `pub mod admin;`, `pub mod jabatan;`, dan `pub mod presensi;` masing-masing membuka akses ke definisi entitas bisnis utama aplikasi, yaitu data pegawai, admin, jabatan, dan presensi.
+- Dengan deklarasi ini, seluruh model domain dapat di-import dari luar modul domain menggunakan `crate::app::domain::....`
+
+### Infrastructure
+
+11. **supabase.rs**
+
+```rust
+use dotenvy::dotenv;
+use reqwest::Client;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use std::env;
+
+pub struct Supabase {
+    base_url: String,
+    pub anon_key: String,
+    http: Client,
+}
+
+impl Supabase {
+    pub fn new() -> Self {
+        dotenv().ok();
+
+        let project_url =
+            env::var("SUPABASE_URL").expect("SUPABASE_URL not set");
+        let anon_key =
+            env::var("SUPABASE_ANON_KEY").expect("SUPABASE_ANON_KEY not set");
+
+        let rest_url = format!("{}/rest/v1", project_url.trim_end_matches('/'));
+
+        let http = Client::new();
+
+        Self {
+            base_url: rest_url,
+            anon_key,
+            http,
+        }
+    }
+
+    fn endpoint(&self, path: &str) -> String {
+        format!("{}/{}", self.base_url.trim_end_matches('/'), path)
+    }
+
+    async fn send_request(
+        &self,
+        req: reqwest::RequestBuilder,
+        err_prefix: &str,
+    ) -> Result<String, String> {
+        let res = req.send().await.map_err(|e| e.to_string())?;
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            Err(format!("{err_prefix} {status}: {text}"))
+        } else {
+            Ok(text)
+        }
+    }
+
+    pub async fn get_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        err_prefix: &str,
+    ) -> Result<T, String> {
+        let url = self.endpoint(path);
+
+        let text = self
+            .send_request(
+                self.http
+                    .get(url)
+                    .header("apikey", &self.anon_key)
+                    .header("Authorization", format!("Bearer {}", self.anon_key)),
+                err_prefix,
+            )
+            .await?;
+
+        serde_json::from_str::<T>(&text).map_err(|e| {
+            format!("{err_prefix} parse error: {e} | body: {text}")
+        })
+    }
+
+    pub async fn insert_json<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+        err_prefix: &str,
+    ) -> Result<(), String> {
+        let url = self.endpoint(path);
+
+        let _ = self
+            .send_request(
+                self.http
+                    .post(url)
+                    .header("apikey", &self.anon_key)
+                    .header("Authorization", format!("Bearer {}", self.anon_key))
+                    .json(body),
+                err_prefix,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn patch_json<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+        err_prefix: &str,
+    ) -> Result<(), String> {
+        let url = self.endpoint(path);
+
+        let _ = self
+            .send_request(
+                self.http
+                    .patch(url)
+                    .header("apikey", &self.anon_key)
+                    .header("Authorization", format!("Bearer {}", self.anon_key))
+                    .json(body),
+                err_prefix,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn upsert_json<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+        err_prefix: &str,
+    ) -> Result<(), String> {
+        let url = self.endpoint(path);
+
+        let _ = self
+            .send_request(
+                self.http
+                    .post(url)
+                    .header("apikey", &self.anon_key)
+                    .header("Authorization", format!("Bearer {}", self.anon_key))
+                    .header("Content-Type", "application/json")
+                    .header("Prefer", "resolution=merge-duplicates")
+                    .json(body),
+                err_prefix,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete(
+        &self,
+        path: &str,
+        err_prefix: &str,
+    ) -> Result<(), String> {
+        let url = self.endpoint(path);
+
+        let _ = self
+            .send_request(
+                self.http
+                    .delete(url)
+                    .header("apikey", &self.anon_key)
+                    .header("Authorization", format!("Bearer {}", self.anon_key)),
+                err_prefix,
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+```
+
+Penjelasan:
+- Baris import membawa `dotenv()` untuk memuat variabel lingkungan dari file `.env`, `reqwest::Client` untuk melakukan HTTP request ke Supabase, serta `std::env` untuk membaca environment variable.
+- Struct Supabase menyimpan konfigurasi koneksi yaitu `url` dan `anon_key` yang digunakan untuk mengakses Supabase API.
+- Pada `impl Supabase`, metode `new()` memanggil `dotenv().ok()` untuk memuat environment variable, lalu mengambil nilai `SUPABASE_URL dan SUPABASE_ANON_KEY` dari environment; kedua nilai wajib ada, jika tidak akan menghasilkan error.
+- Metode `client()` mengembalikan `instance reqwest::Client`, yang digunakan untuk mengirim request HTTP.
+- Metode `endpoint(path)` menyusun URL endpoint REST Supabase dengan memastikan tidak ada karakter / ganda, lalu menambahkan path tabel atau resource yang ingin diakses.
+
+12. **src/app/infra/mod.rs**
+
+```rust
+pub mod supabase;
+```
+
+Penjelasan:
+- Baris ini mendeklarasikan bahwa modul supabase merupakan bagian dari modul infra, sehingga dapat diakses dari bagian lain aplikasi melalui path seperti `crate::app::infra::supabase`.
+- Modul `infra` sendiri berfungsi sebagai layer infrastruktur, sehingga deklarasi ini menunjukkan bahwa koneksi dan komunikasi dengan Supabase berada di lapisan ini.
+
+### Services
+
+13. **admin_service.rs**
+
+```rust
+use crate::app::domain::admin::Admin;
+use crate::app::infra::supabase::Supabase;
+
+pub async fn login_admin(email: String, password: String) -> Result<Admin, String> {
+    let sb = Supabase::new();
+
+    let query = format!(
+        "admin?select=email&email=eq.{email}&password=eq.{password}&limit=1"
+    );
+
+    let admins: Vec<Admin> = sb
+        .get_json(&query, "Supabase login error")
+        .await?;
+
+    admins
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Email atau password salah".to_string())
+}
+```
+
+Penjelasan:
+- Bagian import mengambil model `Admin` dari `domain` serta Supabase sebagai konektor REST untuk mengakses database Supabase.
+- Fungsi `login_admin` diberi tipe `async` karena melakukan komunikasi jaringan, dan mengembalikan `Result<Admin, String>` untuk mengatur kemungkinan sukses atau gagal dalam proses login.
+- Sebuah instance Supabase dibuat untuk memuat konfigurasi koneksi seperti URL dan API Key dari environment variable.
+- Query string dibentuk untuk melakukan pencarian pada tabel admin di Supabase dengan filter email dan password, serta membatasi hasil agar hanya satu admin yang diambil.
+- Request HTTP dikirim menggunakan `reqwest::Client` dari Supabase, disertai header apikey dan Authorization sesuai aturan keamanan Supabase.
+- Response dicek statusnya; jika gagal maka error dikembalikan berisi detail status dan pesan dari Supabase.
+- Data JSON dari hasil request diparsing menjadi `Vec<Admin>` menggunakan `serde_json`, dan fungsi mengembalikan admin pertama jika data ditemukan.
+- Jika tidak ada admin yang cocok (email atau password salah), fungsi mengembalikan pesan error ke frontend.
+
+14. **employee_service.rs**
+
+```rust
+use crate::app::domain::employee::{Employee, NewEmployee};
+use crate::app::infra::supabase::Supabase;
+
+pub async fn list_employees() -> Result<Vec<Employee>, String> {
+    let sb = Supabase::new();
+
+    sb.get_json::<Vec<Employee>>(
+        "employee?select=*&order=id.asc",
+        "Supabase list employees error",
+    )
+    .await
+}
+
+pub async fn add_employee(new_emp: NewEmployee) -> Result<(), String> {
+    let sb = Supabase::new();
+
+    sb.insert_json(
+        "employee",
+        &new_emp,
+        "Supabase insert employee error",
+    )
+    .await
+}
+
+pub async fn update_employee(emp: Employee) -> Result<(), String> {
+    let sb = Supabase::new();
+    let path = format!("employee?id=eq.{}", emp.id);
+    let payload = NewEmployee {
+        nik: emp.nik,
+        name: emp.name,
+        department: emp.department,
+        position: emp.position,
+        base_salary: emp.base_salary,
+    };
+
+    sb.patch_json(
+        &path,
+        &payload,
+        "Supabase update employee error",
+    )
+    .await
+}
+
+pub async fn delete_employee(id: i64) -> Result<(), String> {
+    let sb = Supabase::new();
+
+    let path = format!("employee?id=eq.{id}");
+
+    sb.delete(
+        &path,
+        "Supabase delete employee error",
+    )
+    .await
+}
+```
+
+Penjelasan:
+- Bagian import mengambil model Employee dan NewEmployeeloyee dari domain, Supabase untuk koneksi REST, serta serde_json::json untuk membentuk payload JSON.
+- Fungsi `list_employees` mengambil seluruh data pegawai dari tabel employees dengan query `select=*` dan sorting berdasarkan id, lalu mem-parsing JSON menjadi `Vec<Employee>` untuk dikirim ke frontend.
+- Fungsi `add_employee` menerima data `NewEmployeeloyee`, menyusunnya ke dalam JSON body, dan mengirim request POST ke Supabase untuk menambah data baru ke tabel employees.
+- Fungsi `update_employee` mengirim request PATCH berdasarkan id pegawai, memperbarui data sesuai field yang diterima pada struct Employee, dan mengembalikan status kesuksesan operasi.
+- Fungsi `delete_employee` menjalankan operasi DELETE ke endpoint employees dengan filter id, dan mengembalikan hasil berupa `Ok(())` jika berhasil atau error jika gagal.
+- Setiap operasi HTTP menyertakan header apikey dan Authorization untuk autentikasi Supabase dan menggunakan .await karena semua fungsi berjalan secara `asynchronous`.
+
+15. **jabatan_service.rs**
+
+```rust
+use crate::app::domain::jabatan::{Jabatan, NewJabatan};
+use crate::app::infra::supabase::Supabase;
+use urlencoding::encode;
+
+pub async fn list_jabatan() -> Result<Vec<Jabatan>, String> {
+    let sb = Supabase::new();
+
+    sb.get_json::<Vec<Jabatan>>(
+        "jabatan?select=*&order=nama.asc",
+        "Supabase list jabatan error",
+    )
+    .await
+}
+
+pub async fn add_jabatan(jabatan: NewJabatan) -> Result<(), String> {
+    let sb = Supabase::new();
+
+    sb.insert_json(
+        "jabatan",
+        &jabatan,
+        "Supabase insert jabatan error",
+    )
+    .await
+}
+
+pub async fn update_jabatan(nama: String, jabatan: NewJabatan) -> Result<(), String> {
+    let sb = Supabase::new();
+
+    let path = format!("jabatan?nama=eq.{}", encode(&nama));
+
+    sb.patch_json(
+        &path,
+        &jabatan,
+        "Supabase update jabatan error",
+    )
+    .await
+}
+
+pub async fn delete_jabatan(nama: String) -> Result<(), String> {
+    let sb = Supabase::new();
+
+    let path = format!("jabatan?nama=eq.{}", encode(&nama));
+
+    sb.delete(
+        &path,
+        "Supabase delete jabatan error",
+    )
+    .await
+}
+```
+
+Penjelasan:
+- Bagian import mengambil model `Jabatan` dan `NewJabatan`, struct Supabase sebagai koneksi REST, `serde_json::json` untuk membuat payload JSON, dan `urlencoding::encode` untuk memastikan parameter URL aman digunakan saat memfilter berdasarkan nama.
+- `list_jabatan` mengambil data seluruh jabatan dari Supabase menggunakan query `select=*` dan sorting berdasarkan nama, lalu memparsing JSON ke `Vec<Jabatan>`.
+- `add_jabatan` membuat data jabatan baru melalui request POST, mengirim body JSON yang berisi nama dan tunjangan, lalu mengembalikan status operasi.
+- `update_jabatan` memperbarui data jabatan berdasarkan parameter nama yang di-encode untuk menghindari karakter tidak valid di URL, menggunakan request PATCH dengan payload JSON berisi data baru.
+- `delete_jabatan` menghapus data jabatan berdasarkan nama menggunakan request `DELETE` ke endpoint `Supabase` dengan filter parameter.
+- Semua request menyertakan header apikey dan Authorization sebagai autentikasi Supabase serta menggunakan await karena berjalan asynchronous.
+
+16. **presensi_service.rs**
+
+```rust
+use crate::app::domain::presensi::{Presensi, NewPresensi};
+use crate::app::domain::presensi_summary::PresensiSummary;
+use crate::app::infra::supabase::Supabase;
+use chrono::NaiveDate;
+
+pub async fn list_presensi_for_employee_month(
+    employee_id: i64,
+    year: i32,
+    month: i32,
+) -> Result<Vec<Presensi>, String> {
+    let sb = Supabase::new();
+
+    let first = NaiveDate::from_ymd_opt(year, month as u32, 1)
+        .ok_or_else(|| "Tanggal awal tidak valid".to_string())?;
+    let last = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            .ok_or_else(|| "Tanggal akhir tidak valid".to_string())?
+            .pred_opt()
+            .ok_or_else(|| "Tanggal akhir tidak valid".to_string())?
+    } else {
+        NaiveDate::from_ymd_opt(year, (month + 1) as u32, 1)
+            .ok_or_else(|| "Tanggal akhir tidak valid".to_string())?
+            .pred_opt()
+            .ok_or_else(|| "Tanggal akhir tidak valid".to_string())?
+    };
+
+    let start_date = first.format("%Y-%m-%d").to_string();
+    let end_date = last.format("%Y-%m-%d").to_string();
+
+    let query = format!(
+        "presensi?select=*&employee_id=eq.{employee_id}\
+        &tanggal=gte.{start_date}&tanggal=lte.{end_date}&order=tanggal.asc"
+    );
+
+    sb.get_json::<Vec<Presensi>>(
+        &query,
+        "Supabase list presensi error",
+    )
+    .await
+}
+
+pub async fn get_presensi_summary_for_employee_month(
+    employee_id: i64,
+    year: i32,
+    month: i32,
+) -> Result<PresensiSummary, String> {
+    let items = list_presensi_for_employee_month(employee_id, year, month).await?;
+
+    let mut summary = PresensiSummary {
+        total_hadir: 0,
+        total_sakit: 0,
+        total_cuti: 0,
+        total_absen: 0,
+    };
+
+    for p in items {
+        match p.status.as_str() {
+            "hadir" => summary.total_hadir += 1,
+            "sakit" => summary.total_sakit += 1,
+            "cuti"  => summary.total_cuti  += 1,
+            "absen" => summary.total_absen += 1,
+            other => {
+                eprintln!("[get_presensi_summary] status tak dikenal: {}", other);
+            }
+        }
+    }
+
+    Ok(summary)
+}
+
+pub async fn upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
+    let sb = Supabase::new();
+
+    let path = "presensi?on_conflict=employee_id,tanggal";
+
+    sb.upsert_json(
+        path,
+        &presensi,
+        "Supabase upsert presensi error",
+    )
+    .await
+}
+```
+
+Penjelasan:
+- File ini menggunakan model Presensi, koneksi Supabase, dan library chrono untuk perhitungan tanggal, serta `serde_json` untuk membuat payload JSON.
+- `list_presensi_for_employee_month`:
+  - Menghitung tanggal awal dan akhir bulan secara otomatis.
+  - Mengirim request GET ke Supabase dengan filter `employee_id` dan rentang tanggal.
+  - Memparsing hasil JSON menjadi daftar Presensi.
+- `upsert_presensi`:
+  - Melakukan insert atau update presensi jika sudah ada data yang sama (berdasarkan `employee_id` dan tanggal).
+  - Mengirim request POST dengan payload JSON dan pengaturan conflict resolution.
+- Semua fungsi berjalan `asynchronous` dan memakai autentikasi Supabase melalui header API Key.
+
+17. **payslip_pdf_service.rs**
+
+```rust
+use crate::app::domain::employee::Employee;
+use crate::app::domain::jabatan::Jabatan;
+use crate::app::domain::presensi_summary::PresensiSummary;
+use crate::app::services::{employee_service, jabatan_service, presensi_service};
+
+use chrono::{Datelike, Duration, NaiveDate};
+use genpdf::Element;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+use once_cell::sync::Lazy;
+
+static SUPABASE_SEMAPHORE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(12));
+
+pub enum GenerateMode {
+    SingleCore,
+    MultiCore,
+}
+
+pub async fn generate_slips_jan_2025_to_dec_2026(
+    root_dir: &str,
+    mode: GenerateMode,
+) -> Result<(), String> {
+    let employees = employee_service::list_employees().await?;
+    let jabatans_vec = jabatan_service::list_jabatan().await?;
+    let jabatans = Arc::new(jabatans_vec);
+
+    let periods: Vec<(i32, u32)> = (2025..=2026)
+        .flat_map(|year| (1..=12).map(move |month| (year, month)))
+        .collect();
+
+    fs::create_dir_all(root_dir).map_err(|e| e.to_string())?;
+
+    match mode {
+        GenerateMode::SingleCore => {
+            for emp in employees {
+                generate_slips_for_employee(emp, &jabatans, &periods, root_dir).await?;
+            }
+        }
+        GenerateMode::MultiCore => {
+            use tokio::task;
+
+            let mut handles = Vec::new();
+
+            for emp in employees {
+                let jabatans = Arc::clone(&jabatans);
+                let periods = periods.clone();
+                let root = root_dir.to_string();
+                let emp_name = emp.name.clone();
+
+                let handle = task::spawn(async move {
+                    if let Err(e) =
+                        generate_slips_for_employee(emp, &jabatans, &periods, &root).await
+                    {
+                        eprintln!("[generate_slips_multi] {}: {}", emp_name, e);
+                    }
+                });
+
+                handles.push(handle);
+            }
+
+            for handle in handles {
+                let _ = handle.await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn generate_yearly_slips_2025_2026(
+    root_dir: &str,
+    mode: GenerateMode,
+) -> Result<(), String> {
+    let employees = employee_service::list_employees()
+        .await
+        .map_err(|e| format!("gagal load karyawan: {e}"))?;
+
+    let jabatans = Arc::new(
+        jabatan_service::list_jabatan()
+            .await
+            .map_err(|e| format!("gagal load jabatan: {e}"))?,
+    );
+
+    let years = vec![2025, 2026];
+
+    fs::create_dir_all(root_dir)
+        .map_err(|e| format!("gagal membuat folder root slip tahunan: {e}"))?;
+
+    match mode {
+        GenerateMode::SingleCore => {
+            for emp in employees {
+                generate_yearly_slips_for_employee(
+                    emp,
+                    &years,
+                    Arc::clone(&jabatans),
+                    root_dir,
+                )
+                .await?;
+            }
+        }
+        GenerateMode::MultiCore => {
+            let mut handles = Vec::new();
+
+            for emp in employees {
+                let jabatans_clone = Arc::clone(&jabatans);
+                let years_clone = years.clone();
+                let root_clone = root_dir.to_string();
+
+                let handle = tokio::spawn(async move {
+                    if let Err(e) = generate_yearly_slips_for_employee(
+                        emp,
+                        &years_clone,
+                        jabatans_clone,
+                        &root_clone,
+                    )
+                    .await
+                    {
+                        eprintln!("gagal generate slip tahunan: {e}");
+                    }
+                });
+
+                handles.push(handle);
+            }
+
+            for h in handles {
+                if let Err(e) = h.await {
+                    eprintln!("task join error: {e}");
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn generate_slips_for_employee(
+    emp: Employee,
+    jabatans: &Arc<Vec<Jabatan>>,
+    periods: &[(i32, u32)],
+    root_dir: &str,
+) -> Result<(), String> {
+    let emp_dir = build_employee_dir(root_dir, &emp);
+    fs::create_dir_all(&emp_dir).map_err(|e| e.to_string())?;
+
+    for (year, month) in periods {
+        let summary: PresensiSummary =
+            get_presensi_summary_limited(emp.id, *year, *month as i32).await?;
+
+        let working_days = count_working_days_in_month(*year, *month)?;
+        let periode_text = build_periode_text(*year, *month)?;
+
+        let slip = build_slip_data(&emp, jabatans, &periode_text, &summary, working_days);
+
+        let filename = format!("slip-gaji-{}-{:04}-{:02}.pdf", emp.nik, year, month);
+        let path = emp_dir.join(filename);
+
+        write_payslip_pdf(&slip, &path)?;
+    }
+
+    Ok(())
+}
+
+async fn generate_yearly_slips_for_employee(
+    emp: Employee,
+    years: &[i32],
+    jabatans: Arc<Vec<Jabatan>>,
+    root_dir: &str,
+) -> Result<(), String> {
+    let emp_dir = build_employee_dir(root_dir, &emp);
+    fs::create_dir_all(&emp_dir)
+        .map_err(|e| format!("gagal buat folder karyawan: {e}"))?;
+
+    for &year in years {
+        let mut monthly_slips = Vec::new();
+
+        for month in 1..=12_u32 {
+            let periode = build_periode_text(year, month)?;
+            let summary =
+                get_presensi_summary_limited(emp.id, year, month as i32).await?;
+            let working_days = count_working_days_in_month(year, month)?;
+
+            let slip = build_slip_data(
+                &emp,
+                &jabatans,
+                &periode,
+                &summary,
+                working_days,
+            );
+
+            monthly_slips.push(slip);
+        }
+
+        if let Some(yearly_data) = build_yearly_slip_data(year, &monthly_slips) {
+            let file_name = format!("slip-gaji-tahunan-{}-{}.pdf", emp.nik, year);
+            let path = emp_dir.join(file_name);
+
+            write_yearly_payslip_pdf(&yearly_data, &path)
+                .map_err(|e| format!("gagal tulis PDF tahunan: {e}"))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn build_employee_dir(root_dir: &str, emp: &Employee) -> PathBuf {
+    let mut name_slug: String = emp
+        .name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c
+            } else if c.is_whitespace() {
+                '_'
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    if name_slug.is_empty() {
+        name_slug = "unknown".to_string();
+    }
+
+    Path::new(root_dir).join(format!("{}_{}", emp.nik, name_slug))
+}
+
+pub struct SlipData {
+    pub periode: String,
+    pub nama: String,
+    pub nik: String,
+    pub jabatan: String,
+    pub departemen: String,
+
+    pub gaji_pokok: f64,
+    pub tunjangan_gaji: f64,
+    pub total_pendapatan: f64,
+    pub asuransi_kesehatan: f64,
+    pub total_potongan: f64,
+    pub gaji_setelah_asuransi: f64,
+
+    pub total_hadir: i64,
+    pub total_sakit: i64,
+    pub total_cuti: i64,
+    pub total_absen: i64,
+    pub hari_kerja: u32,
+    pub total_hadir_efektif: f64,
+    pub faktor_kehadiran: f64,
+
+    pub gaji_bersih_diterima: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct YearlySlipMonthRow {
+    pub bulan_nama: String,
+
+    pub total_hadir: i64,
+    pub total_sakit: i64,
+    pub total_cuti: i64,
+    pub total_absen: i64,
+    pub hari_kerja: u32,
+    pub total_hadir_efektif: f64,
+
+    pub gaji_setelah_asuransi: f64,
+    pub gaji_bersih_diterima: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct YearlySlipData {
+    pub tahun: i32,
+
+    pub nama: String,
+    pub nik: String,
+    pub jabatan: String,
+    pub departemen: String,
+
+    pub gaji_pokok: f64,
+    pub tunjangan_gaji: f64,
+    pub total_pendapatan: f64,
+    pub asuransi_kesehatan: f64,
+    pub gaji_setelah_asuransi: f64,
+
+    pub rows: Vec<YearlySlipMonthRow>,
+
+    pub total_kehadiran: i64,
+    pub total_kehadiran_efektif: f64,
+    pub total_hari_kerja: u32,
+    pub total_gaji_bersih: f64,
+}
+
+fn build_slip_data(
+    emp: &Employee,
+    jabatans: &Arc<Vec<Jabatan>>,
+    periode: &str,
+    summary: &PresensiSummary,
+    working_days: u32,
+) -> SlipData {
+    let gaji_pokok = emp.base_salary as f64;
+
+    let jabatan_row = jabatans.iter().find(|j| j.nama == emp.position);
+    let tunjangan_gaji = jabatan_row.map(|j| j.tunjangan).unwrap_or(0.0);
+
+    let asuransi_kesehatan = 450_000.0;
+
+    let total_pendapatan = gaji_pokok + tunjangan_gaji;
+    let total_potongan = asuransi_kesehatan;
+    let gaji_setelah_asuransi = total_pendapatan - total_potongan;
+
+    let total_hadir = summary.total_hadir;
+    let total_sakit = summary.total_sakit;
+    let total_cuti = summary.total_cuti;
+    let total_absen = summary.total_absen;
+
+    let total_hadir_efektif =
+        total_hadir as f64 * 1.0 + total_sakit as f64 * 0.8 + total_cuti as f64 * 0.4;
+
+    let hari_kerja = working_days;
+
+    let mut faktor_kehadiran = 1.0;
+    let mut gaji_bersih_diterima = gaji_setelah_asuransi;
+
+    if hari_kerja > 0 {
+        faktor_kehadiran = total_hadir_efektif / hari_kerja as f64;
+
+        if !faktor_kehadiran.is_finite() {
+            faktor_kehadiran = 0.0;
+        }
+        if faktor_kehadiran < 0.0 {
+            faktor_kehadiran = 0.0;
+        }
+        if faktor_kehadiran > 1.0 {
+            faktor_kehadiran = 1.0;
+        }
+
+        gaji_bersih_diterima = gaji_setelah_asuransi * faktor_kehadiran;
+    }
+
+    SlipData {
+        periode: periode.to_string(),
+        nama: emp.name.clone(),
+        nik: emp.nik.clone(),
+        jabatan: emp.position.clone(),
+        departemen: emp.department.clone(),
+
+        gaji_pokok,
+        tunjangan_gaji,
+        total_pendapatan,
+        asuransi_kesehatan,
+        total_potongan,
+        gaji_setelah_asuransi,
+
+        total_hadir,
+        total_sakit,
+        total_cuti,
+        total_absen,
+        hari_kerja,
+        total_hadir_efektif,
+        faktor_kehadiran,
+
+        gaji_bersih_diterima,
+    }
+}
+
+fn build_yearly_slip_data(tahun: i32, slips: &[SlipData]) -> Option<YearlySlipData> {
+    if slips.is_empty() {
+        return None;
+    }
+
+    let first = &slips[0];
+
+    let mut rows = Vec::with_capacity(slips.len());
+
+    let mut total_kehadiran: i64 = 0;
+    let mut total_kehadiran_efektif: f64 = 0.0;
+    let mut total_hari_kerja: u32 = 0;
+    let mut total_gaji_bersih: f64 = 0.0;
+
+    for (idx, s) in slips.iter().enumerate() {
+        let bulan_index = (idx as u32) + 1;
+        let bulan_nama = MONTH_NAMES_ID[(bulan_index - 1) as usize].to_string();
+
+        rows.push(YearlySlipMonthRow {
+            bulan_nama,
+
+            total_hadir: s.total_hadir,
+            total_sakit: s.total_sakit,
+            total_cuti: s.total_cuti,
+            total_absen: s.total_absen,
+            hari_kerja: s.hari_kerja,
+            total_hadir_efektif: s.total_hadir_efektif,
+
+            gaji_setelah_asuransi: s.gaji_setelah_asuransi,
+            gaji_bersih_diterima: s.gaji_bersih_diterima,
+        });
+
+        total_kehadiran += s.total_hadir;
+        total_kehadiran_efektif += s.total_hadir_efektif;
+        total_hari_kerja += s.hari_kerja;
+        total_gaji_bersih += s.gaji_bersih_diterima;
+    }
+
+    Some(YearlySlipData {
+        tahun,
+
+        nama: first.nama.clone(),
+        nik: first.nik.clone(),
+        jabatan: first.jabatan.clone(),
+        departemen: first.departemen.clone(),
+
+        gaji_pokok: first.gaji_pokok,
+        tunjangan_gaji: first.tunjangan_gaji,
+        total_pendapatan: first.total_pendapatan,
+        asuransi_kesehatan: first.asuransi_kesehatan,
+        gaji_setelah_asuransi: first.gaji_setelah_asuransi,
+
+        rows,
+        total_kehadiran,
+        total_kehadiran_efektif,
+        total_hari_kerja,
+        total_gaji_bersih,
+    })
+}
+
+static MONTH_NAMES_ID: [&str; 12] = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+];
+
+fn build_periode_text(year: i32, month: u32) -> Result<String, String> {
+    let month_index = (month - 1) as usize;
+    let month_name = MONTH_NAMES_ID
+        .get(month_index)
+        .ok_or_else(|| "Bulan di luar jangkauan".to_string())?;
+
+    let last_day = last_day_of_month(year, month)?;
+    let first_str = "01";
+    let last_str = format!("{:02}", last_day);
+
+    Ok(format!("{first_str}–{last_str} {month_name} {year}"))
+}
+
+fn last_day_of_month(year: i32, month: u32) -> Result<u32, String> {
+    let first_next = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    }
+    .ok_or_else(|| "Tanggal tidak valid".to_string())?;
+
+    let last = first_next - Duration::days(1);
+    Ok(last.day())
+}
+
+fn count_working_days_in_month(year: i32, month: u32) -> Result<u32, String> {
+    let mut day = 1;
+    let mut count = 0;
+
+    loop {
+        match NaiveDate::from_ymd_opt(year, month, day) {
+            Some(date) => {
+                let weekday = date.weekday().number_from_monday();
+                if (1..=5).contains(&weekday) {
+                    count += 1;
+                }
+                day += 1;
+            }
+            None => break,
+        }
+    }
+
+    Ok(count)
+}
+
+fn format_rupiah_i64(amount: i64) -> String {
+    let neg = amount < 0;
+    let s: String = amount.abs().to_string();
+    let mut result = String::new();
+
+    let mut count = 0;
+    for ch in s.chars().rev() {
+        if count != 0 && count % 3 == 0 {
+            result.push('.');
+        }
+        result.push(ch);
+        count += 1;
+    }
+
+    let mut formatted: String = result.chars().rev().collect();
+    if neg {
+        formatted.insert(0, '-');
+    }
+
+    formatted
+}
+
+pub trait ToRupiah {
+    fn rp(&self) -> String;
+}
+
+impl ToRupiah for i64 {
+    fn rp(&self) -> String {
+        format_rupiah_i64(*self)
+    }
+}
+
+impl ToRupiah for f64 {
+    fn rp(&self) -> String {
+        let val = self.round() as i64;
+        format_rupiah_i64(val)
+    }
+}
+
+impl ToRupiah for u64 {
+    fn rp(&self) -> String {
+        format_rupiah_i64(*self as i64)
+    }
+}
+
+fn write_payslip_pdf(data: &SlipData, path: &Path) -> Result<(), String> {
+    use genpdf::elements::{Break, Paragraph};
+    use genpdf::{Alignment, Document, style};
+
+    let mut fonts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fonts_dir.push("fonts");
+
+    let font_family = genpdf::fonts::from_files(&fonts_dir, "LiberationSans", None)
+        .map_err(|e| format!("Gagal load font di {:?}: {}", fonts_dir, e))?;
+
+    let mut doc = Document::new(font_family);
+    doc.set_title("Struk Gaji Karyawan");
+
+    let mut decorator = genpdf::SimplePageDecorator::new();
+    decorator.set_margins(10);
+    doc.set_page_decorator(decorator);
+
+    let bold = style::Style::new().bold();
+
+    doc.push(
+        Paragraph::new("Struk Gaji Karyawan")
+            .aligned(Alignment::Left)
+            .styled(bold),
+    );
+    doc.push(Break::new(1));
+
+    doc.push(Paragraph::new(format!("Periode: {}", data.periode)));
+    doc.push(Paragraph::new(format!("Nama: {}", data.nama)));
+    doc.push(Paragraph::new(format!("NIK: {}", data.nik)));
+    doc.push(Paragraph::new(format!("Jabatan: {}", data.jabatan)));
+    doc.push(Paragraph::new(format!("Departemen: {}", data.departemen)));
+
+    doc.push(Break::new(1));
+
+    doc.push(Paragraph::new("Komponen Gaji").styled(bold));
+    doc.push(Paragraph::new(format!(
+        "Gaji Pokok: Rp {}",
+        data.gaji_pokok.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Tunjangan Gaji: Rp {}",
+        data.tunjangan_gaji.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Total Pendapatan: Rp {}",
+        data.total_pendapatan.rp()
+    )));
+
+    doc.push(Break::new(1));
+
+    doc.push(Paragraph::new("Potongan").styled(bold));
+    doc.push(Paragraph::new(format!(
+        "Asuransi Kesehatan: Rp {}",
+        data.asuransi_kesehatan.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Total Potongan: Rp {}",
+        data.total_potongan.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Gaji setelah potongan asuransi: Rp {}",
+        data.gaji_setelah_asuransi.rp()
+    )));
+
+    doc.push(Break::new(1));
+
+    doc.push(Paragraph::new("Rekap Presensi Bulan Ini").styled(bold));
+    doc.push(Paragraph::new(format!(
+        "Total kehadiran: {}",
+        data.total_hadir
+    )));
+    doc.push(Paragraph::new(format!("Total sakit: {}", data.total_sakit)));
+    doc.push(Paragraph::new(format!("Total cuti: {}", data.total_cuti)));
+    doc.push(Paragraph::new(format!("Total absen: {}", data.total_absen)));
+    doc.push(Paragraph::new(format!(
+        "Total kehadiran efektif: {:.1} dari {} hari kerja",
+        data.total_hadir_efektif, data.hari_kerja
+    )));
+    doc.push(Paragraph::new(format!(
+        "Faktor kehadiran: {:.2}%",
+        data.faktor_kehadiran * 100.0
+    )));
+
+    doc.push(Break::new(1));
+
+    doc.push(Paragraph::new(format!(
+        "Gaji setelah potongan asuransi: Rp {}",
+        data.gaji_setelah_asuransi.rp()
+    )));
+    doc.push(
+        Paragraph::new(format!(
+            "Gaji Bersih Diterima (berdasarkan kehadiran): Rp {}",
+            data.gaji_bersih_diterima.rp()
+        ))
+        .styled(bold),
+    );
+
+    doc.render_to_file(path).map_err(|e| e.to_string())
+}
+
+fn write_yearly_payslip_pdf(
+    data: &YearlySlipData,
+    path: &Path,
+) -> Result<(), String> {
+    use genpdf::elements::{Break, Paragraph};
+    use genpdf::{Alignment, Document, style};
+
+    let mut fonts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    fonts_dir.push("fonts");
+
+    let font_family = genpdf::fonts::from_files(&fonts_dir, "LiberationSans", None)
+        .map_err(|e| format!("Gagal load font di {:?}: {}", fonts_dir, e))?;
+
+    let mut doc = Document::new(font_family);
+    doc.set_title(format!("Struk Gaji Tahunan {}", data.nama));
+
+    let mut decorator = genpdf::SimplePageDecorator::new();
+    decorator.set_margins(10);
+    doc.set_page_decorator(decorator);
+
+    let bold = style::Style::new().bold();
+
+    doc.push(
+        Paragraph::new("Struk Gaji Tahunan Karyawan")
+            .aligned(Alignment::Center)
+            .styled(bold),
+    );
+    doc.push(Break::new(1));
+    doc.push(Paragraph::new(format!("Tahun: {}", data.tahun)));
+    doc.push(Break::new(1));
+
+    doc.push(Paragraph::new(format!("Nama: {}", data.nama)));
+    doc.push(Paragraph::new(format!("NIK: {}", data.nik)));
+    doc.push(Paragraph::new(format!("Jabatan: {}", data.jabatan)));
+    doc.push(Paragraph::new(format!("Departemen: {}", data.departemen)));
+
+    doc.push(Break::new(1));
+    doc.push(Paragraph::new("Komponen Gaji (per bulan)").styled(bold));
+
+    doc.push(Paragraph::new(format!(
+        "Gaji Pokok: Rp {}",
+        data.gaji_pokok.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Tunjangan Gaji: Rp {}",
+        data.tunjangan_gaji.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Total Pendapatan: Rp {}",
+        data.total_pendapatan.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Asuransi Kesehatan: Rp {}",
+        data.asuransi_kesehatan.rp()
+    )));
+    doc.push(Paragraph::new(format!(
+        "Gaji setelah potongan asuransi: Rp {}",
+        data.gaji_setelah_asuransi.rp()
+    )));
+
+    doc.push(Break::new(1));
+    doc.push(Paragraph::new("Rekap Presensi & Gaji per Bulan").styled(bold));
+
+    for row in &data.rows {
+        doc.push(Break::new(1));
+
+        doc.push(
+            Paragraph::new(&row.bulan_nama)
+                .styled(bold),
+        );
+
+        doc.push(Paragraph::new(format!(
+            "Total kehadiran: {}",
+            row.total_hadir
+        )));
+        doc.push(Paragraph::new(format!(
+            "Total sakit: {}",
+            row.total_sakit
+        )));
+        doc.push(Paragraph::new(format!(
+            "Total cuti: {}",
+            row.total_cuti
+        )));
+        doc.push(Paragraph::new(format!(
+            "Total absen: {}",
+            row.total_absen
+        )));
+        doc.push(Paragraph::new(format!(
+            "Total kehadiran efektif: {:.1} dari {} hari kerja",
+            row.total_hadir_efektif,
+            row.hari_kerja
+        )));
+        doc.push(Paragraph::new(format!(
+            "Gaji akhir bulan: Rp {}",
+            row.gaji_bersih_diterima.rp()
+        )));
+    }
+
+    doc.push(Break::new(1));
+    doc.push(Paragraph::new("Ringkasan Tahun Ini").styled(bold));
+    doc.push(Paragraph::new(format!(
+        "Total kehadiran: {} hari",
+        data.total_kehadiran
+    )));
+    doc.push(Paragraph::new(format!(
+        "Total kehadiran efektif: {:.1} dari {} hari kerja",
+        data.total_kehadiran_efektif,
+        data.total_hari_kerja
+    )));
+    doc.push(Paragraph::new(format!(
+        "Total gaji bersih dibayarkan setahun: Rp {}",
+        data.total_gaji_bersih.rp()
+    )));
+
+    doc.render_to_file(path)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+async fn get_presensi_summary_limited(
+    employee_id: i64,
+    year: i32,
+    month: i32,
+) -> Result<PresensiSummary, String> {
+    use tokio::time::{sleep, Duration};
+
+    let mut attempt = 0;
+
+    loop {
+        attempt += 1;
+
+        let permit = SUPABASE_SEMAPHORE
+            .acquire()
+            .await
+            .map_err(|e| format!("Semaphore error: {}", e))?;
+
+        let result = presensi_service::get_presensi_summary_for_employee_month(
+            employee_id,
+            year,
+            month,
+        )
+        .await;
+
+        drop(permit);
+
+        match result {
+            Ok(summary) => return Ok(summary),
+            Err(e) => {
+                let is_last = attempt >= 3;
+                eprintln!(
+                    "[supabase] error attempt {} for emp {} {}-{}: {}",
+                    attempt, employee_id, year, month, e
+                );
+
+                if is_last {
+                    return Err(format!("Gagal ambil presensi setelah {}x: {}", attempt, e));
+                } else {
+                    sleep(Duration::from_millis(300 * attempt as u64)).await;
+                }
+            }
+        }
+    }
+}
+```
+
+Penjelasan:
+- 
+
+18. **src/app/services/mod.rs**
+
+```rust
+pub mod employee_service;
+pub mod admin_service;
+pub mod jabatan_service;
+pub mod presensi_service;
+pub mod payslip_pdf_service;
+```
+
+Penjelasan:
+- File ini mendeklarasikan empat modul service: `employee_service`, `admin_service`, `jabatan_service`, dan `presensi_service`.
+- Dengan deklarasi `pub mod`, seluruh fungsi `service` tersebut dapat digunakan oleh bagian lain aplikasi, termasuk command pada Tauri backend.
+- Layer services berfungsi sebagai logika bisnis yang menghubungkan antara command dan infrastruktur database (Supabase), sehingga file ini berperan sebagai pengelompok modul layanan yang ada dalam sistem.
+
+## Screenshot
+
+- **Halaman Login**
+
+![Halaman Login](Halaman_Login.png)
+
+- **Tampilan Tab Data Karyawan**
+
+![Data Karyawan](Data_Karyawan.png)
+
+![Manajemen Jabatan dan Tunjangannya](Manajemen_Jabatan_dan_Tunjangannya.png)
+
+![Daftar Karyawan](Daftar_Karyawan.png)
+
+- **Tampilan Tab Laporan Gaji dan Jadwal**
+
+![Data Presensi Karyawan](Data_Presensi_Karyawan.png)
+
+![Data Gaji Karyawan Per Bulan](Data_Gaji_Karyawan_Per_Bulan.png)
+
+![Data Gaji Karyawan Per Tahun](Data_Gaji_Karyawan_Per_Tahun.png)
+
+![Tampilan Generate Laporan Gaji](Tampilan_Generate_Laporan_Gaji.png)
+
+## Conclusion
+
+Berdasarkan hasil implementasi, pengembangan Sistem Manajemen Karyawan ini menunjukkan bahwa kombinasi Rust dan Tauri mampu menghasilkan aplikasi desktop yang jauh lebih ringan dan cepat dibandingkan solusi berbasis web biasa. Walaupun penerapan aturan memori Rust dan konsep pemrograman fungsional terasa ketat dan menantang saat penulisan kode, hal ini terbukti sangat efektif dalam mencegah bug fatal (seperti aplikasi menutup sendiri) ketika dijalankan.
+
+Selain itu, penggunaan Supabase sebagai backend sangat membantu menyederhanakan arsitektur sistem karena kami tidak perlu membangun server database lokal yang ribet. Secara keseluruhan, sistem ini telah memenuhi kebutuhan fungsionalitas pengelolaan data karyawan dengan performa yang stabil dan penggunaan sumber daya komputer yang sangat minim.
