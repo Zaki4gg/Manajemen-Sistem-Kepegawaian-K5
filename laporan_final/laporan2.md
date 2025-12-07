@@ -122,12 +122,11 @@ fn main() {
 ```
 
 Penjelasan:
-- Baris pertama menunjukkan atribut untuk seluruh crate yang mengatur perilaku aplikasi ketika dijalankan di Windows
-- Baris ke tiga dan empat bertujuan untuk memanggil modul app dan coomand.
-- Di fungsi `main`, aplikasi Tauri dibangun menggunakan pola builder. `tauri::Builder::default()` membuat instance default, lalu memanggil `.invoke_handler(tauri::generate_handler![ ... ])` untuk mendaftarkan fungsi-fungsi rust yang akan di ekspor sebagai command ke front-end Tauri.
-- `tauri::generate_handler!` menerima daftar fungsi dari modul `commands`.
-- `.run(tauri::generate_context!())` akan dipanggil dan membaca konfigurasi dari `tauri.conf.json` lalu menjalankan event loop Tauri: membuka window aplikasi, menghubungkan event, dan menangani command sampai aplikasi ditutup.
-- Hasil dari `run` adalah `Result`, sehingga diakhiri dengan `expect(...);` yang akan membuat Tauri "Panic" dengan pesan itu, sehingga kita tau kalau ada masalah ketika kita menjalankan aplikasi.
+- Baris pertama mengonfigurasi atribut `windows_subsystem` agar console window tidak muncul saat aplikasi dijalankan dalam mode rilis di Windows.
+- Modul `app` dan `commands` dimuat untuk menghubungkan struktur folder aplikasi.
+- Pada fungsi `main`, aplikasi Tauri dibangun menggunakan pola builder. Fungsi `.invoke_handler(tauri::generate_handler![...])` digunakan untuk mendaftarkan fungsi-fungsi Rust agar dapat dipanggil dari frontend JavaScript.
+- Daftar handler mencakup seluruh fungsi logika aplikasi, mulai dari manajemen data karyawan, jabatan, presensi, hingga perintah khusus untuk pembuatan laporan gaji (`cmd_generate_slip_batch` dan `cmd_generate_slip_yearly_batch`).
+- Terakhir, `.run(tauri::generate_context!())` menjalankan event loop aplikasi, membaca konfigurasi dari `tauri.conf.json`, dan menjaga aplikasi tetap berjalan.
 
 2.  **lib.rs**
 
@@ -272,14 +271,10 @@ pub async fn cmd_generate_slip_yearly_batch(mode: String) -> Result<(), String> 
 ```
 
 Penjelasan:
-- Baris awal digunakan untuk mengimpor tipe domain (`Employee, Admin, Jabatan, Presensi`) dan modul-modul service yang berisi logika bisnis.
-- Setiap fungsi diberi atribut `#[tauri::command]` agar dapat dipanggil dari frontend melalui `invoke()` pada aplikasi Tauri.
-- Semua fungsi command bersifat `asynchronous` sehingga pemanggilan ke service berjalan tanpa menghambat UI.
-- Command terkait `Employee` (`cmd_list_employees, cmd_add_employee, cmd_update_employee, cmd_delete_employee`) menjalankan operasi CRUD melalui `employee_service`.
-- `cmd_admin_login` memanggil `admin_service` untuk melakukan validasi login admin dan mengembalikan objek Admin jika berhasil.
-- Command terkait `Jabatan` (`cmd_list_jabatan, cmd_add_jabatan, cmd_update_jabatan, cmd_delete_jabatan`) meneruskan operasi data jabatan ke `jabatan_service`.
-- Command terkait `Presensi` (`cmd_list_presensi, cmd_upsert_presensi`) menangani pengambilan dan penyimpanan presensi melalui `presensi_service`.
-- Semua fungsi mengembalikan `Result<>` sebagai mekanisme pengiriman data sukses atau pesan error ke frontend.
+- File ini berfungsi sebagai gerbang penghubung (interface) antara Frontend Tauri dan Backend Rust.
+- Mengimpor berbagai modul service (`employee_service`, `presensi_service`, `payslip_pdf_service`) yang berisi logika bisnis utama.
+- Setiap fungsi diberi atribut `#[tauri::command]` dan bersifat `async` agar proses berat tidak membekukan antarmuka aplikasi.
+- Fungsi-fungsi seperti `cmd_generate_slip_batch` menerima parameter `mode` ("single" atau "multi") untuk menentukan apakah proses pembuatan PDF dilakukan secara berurutan atau secara paralel menggunakan multi-core processing.
 
 4. **src/app/mod.rs**
 
@@ -362,10 +357,9 @@ define_employee_types! {
 ```
 
 Penjelasan:
-- Serialize dan Deserialize dari serde memungkinkan data `Employee` dan `NewEmployeeloyee` dipertukarkan dengan frontend melalui JSON.
-- Derive Debug dan Clone memudahkan debugging serta penggandaan struct.
-- `Employee` mewakili data pegawai yang sudah tersimpan di database sehingga memiliki id.
-- `NewEmployeeloyee` digunakan saat menambah pegawai baru, belum memiliki id karena akan dibuat oleh database.
+- Menggunakan `serde` untuk serialisasi data JSON.
+- Macro `define_employee_types!`: Kode ini menggunakan fitur Rust Macros (`macro_rules!`) untuk mendefinisikan struct `Employee` (dengan ID) dan `NewEmployee` (tanpa ID) sekaligus.
+- Pendekatan ini menerapkan prinsip DRY (Don't Repeat Yourself), sehingga kita tidak perlu menulis ulang field (nik, name, dst) dua kali. Ini mengurangi risiko ketidakkonsistenan tipe data antara saat insert dan saat read.
 
 8. **jabatan.rs**
 
@@ -434,6 +428,8 @@ pub struct PresensiSummary {
 ```
 
 Penjelasan:
+- Struct `PresensiSummary` berfungsi sebagai objek transfer data (DTO) sederhana.
+- Struct ini digunakan untuk menampung hasil rekapitulasi perhitungan kehadiran, yang berisi jumlah total hari untuk setiap kategori status: `total_hadir`, `total_sakit`, `total_cuti`, dan `total_absen`.
 
 11. **src/app/domain/mod.rs**
 
@@ -620,11 +616,11 @@ impl Supabase {
 ```
 
 Penjelasan:
-- Baris import membawa `dotenv()` untuk memuat variabel lingkungan dari file `.env`, `reqwest::Client` untuk melakukan HTTP request ke Supabase, serta `std::env` untuk membaca environment variable.
-- Struct Supabase menyimpan konfigurasi koneksi yaitu `url` dan `anon_key` yang digunakan untuk mengakses Supabase API.
-- Pada `impl Supabase`, metode `new()` memanggil `dotenv().ok()` untuk memuat environment variable, lalu mengambil nilai `SUPABASE_URL dan SUPABASE_ANON_KEY` dari environment; kedua nilai wajib ada, jika tidak akan menghasilkan error.
-- Metode `client()` mengembalikan `instance reqwest::Client`, yang digunakan untuk mengirim request HTTP.
-- Metode `endpoint(path)` menyusun URL endpoint REST Supabase dengan memastikan tidak ada karakter / ganda, lalu menambahkan path tabel atau resource yang ingin diakses.
+- File ini mengatur seluruh komunikasi jaringan ke database Supabase secara terpusat.
+- Struct `Supabase` mengimplementasikan Metode Generik (`Generic Methods`) untuk menangani berbagai tipe data secara dinamis:
+    - `get_json<T>`: Mengambil data dari API dan mem-parsing respon JSON langsung ke dalam struct Rust apa pun (T).
+    - `insert_json<B>`, `patch_json<B>`, `upsert_json<B>`: Mengirim data ke server untuk operasi penambahan atau pembaruan data dengan tipe struct input (B).
+- Header otentikasi seperti `apikey` dan `Authorization` diatur secara otomatis di dalam fungsi privat `send_request`, sehingga lapisan service tidak perlu menangani detail keamanan koneksi.
 
 12. **src/app/infra/mod.rs**
 
@@ -663,14 +659,10 @@ pub async fn login_admin(email: String, password: String) -> Result<Admin, Strin
 ```
 
 Penjelasan:
-- Bagian import mengambil model `Admin` dari `domain` serta Supabase sebagai konektor REST untuk mengakses database Supabase.
-- Fungsi `login_admin` diberi tipe `async` karena melakukan komunikasi jaringan, dan mengembalikan `Result<Admin, String>` untuk mengatur kemungkinan sukses atau gagal dalam proses login.
-- Sebuah instance Supabase dibuat untuk memuat konfigurasi koneksi seperti URL dan API Key dari environment variable.
-- Query string dibentuk untuk melakukan pencarian pada tabel admin di Supabase dengan filter email dan password, serta membatasi hasil agar hanya satu admin yang diambil.
-- Request HTTP dikirim menggunakan `reqwest::Client` dari Supabase, disertai header apikey dan Authorization sesuai aturan keamanan Supabase.
-- Response dicek statusnya; jika gagal maka error dikembalikan berisi detail status dan pesan dari Supabase.
-- Data JSON dari hasil request diparsing menjadi `Vec<Admin>` menggunakan `serde_json`, dan fungsi mengembalikan admin pertama jika data ditemukan.
-- Jika tidak ada admin yang cocok (email atau password salah), fungsi mengembalikan pesan error ke frontend.
+- Fungsi `login_admin` menangani otentikasi administrator.
+- Menggunakan struct `Supabase` untuk membuat koneksi.
+- Logika otentikasi dilakukan dengan mengirim query ke tabel `admin` yang memfilter berdasarkan `email` dan `password` yang cocok, serta membatasi hasil pencarian (`limit=1`).
+- Menggunakan metode generik `.get_json()` untuk mengambil data. Jika data ditemukan, fungsi mengembalikan objek `Admin`; jika array kosong (tidak ada yang cocok), fungsi mengembalikan pesan error "Email atau password salah".
 
 14. **employee_service.rs**
 
@@ -732,12 +724,12 @@ pub async fn delete_employee(id: i64) -> Result<(), String> {
 ```
 
 Penjelasan:
-- Bagian import mengambil model Employee dan NewEmployeeloyee dari domain, Supabase untuk koneksi REST, serta serde_json::json untuk membentuk payload JSON.
-- Fungsi `list_employees` mengambil seluruh data pegawai dari tabel employees dengan query `select=*` dan sorting berdasarkan id, lalu mem-parsing JSON menjadi `Vec<Employee>` untuk dikirim ke frontend.
-- Fungsi `add_employee` menerima data `NewEmployeeloyee`, menyusunnya ke dalam JSON body, dan mengirim request POST ke Supabase untuk menambah data baru ke tabel employees.
-- Fungsi `update_employee` mengirim request PATCH berdasarkan id pegawai, memperbarui data sesuai field yang diterima pada struct Employee, dan mengembalikan status kesuksesan operasi.
-- Fungsi `delete_employee` menjalankan operasi DELETE ke endpoint employees dengan filter id, dan mengembalikan hasil berupa `Ok(())` jika berhasil atau error jika gagal.
-- Setiap operasi HTTP menyertakan header apikey dan Authorization untuk autentikasi Supabase dan menggunakan .await karena semua fungsi berjalan secara `asynchronous`.
+- Menangani operasi CRUD (Create, Read, Update, Delete) untuk data karyawan.
+- List: Fungsi `list_employees` mengambil seluruh data pegawai yang diurutkan berdasarkan ID menggunakan `sb.get_json::<Vec<Employee>>`.
+- Add: Fungsi `add_employee` menggunakan `sb.insert_json` untuk mengirim data pegawai baru (`NewEmployee`) ke database.
+- Update: Fungsi `update_employee` menyusun payload data baru dan mengirimkannya menggunakan `sb.patch_json` dengan filter ID karyawan di URL.
+- Delete: Fungsi `delete_employee` menghapus data karyawan berdasarkan ID menggunakan `sb.delete`.
+- Kode di sini sangat ringkas karena seluruh detail penanganan HTTP request dan header sudah diabstraksi di dalam modul infrastruktur.
 
 15. **jabatan_service.rs**
 
@@ -794,12 +786,9 @@ pub async fn delete_jabatan(nama: String) -> Result<(), String> {
 ```
 
 Penjelasan:
-- Bagian import mengambil model `Jabatan` dan `NewJabatan`, struct Supabase sebagai koneksi REST, `serde_json::json` untuk membuat payload JSON, dan `urlencoding::encode` untuk memastikan parameter URL aman digunakan saat memfilter berdasarkan nama.
-- `list_jabatan` mengambil data seluruh jabatan dari Supabase menggunakan query `select=*` dan sorting berdasarkan nama, lalu memparsing JSON ke `Vec<Jabatan>`.
-- `add_jabatan` membuat data jabatan baru melalui request POST, mengirim body JSON yang berisi nama dan tunjangan, lalu mengembalikan status operasi.
-- `update_jabatan` memperbarui data jabatan berdasarkan parameter nama yang di-encode untuk menghindari karakter tidak valid di URL, menggunakan request PATCH dengan payload JSON berisi data baru.
-- `delete_jabatan` menghapus data jabatan berdasarkan nama menggunakan request `DELETE` ke endpoint `Supabase` dengan filter parameter.
-- Semua request menyertakan header apikey dan Authorization sebagai autentikasi Supabase serta menggunakan await karena berjalan asynchronous.
+- Menangani manajemen data jabatan dan besaran tunjangannya.
+- Mirip dengan service karyawan, namun memiliki perbedaan pada cara identifikasi data. Karena jabatan tidak menggunakan ID angka melainkan nama jabatan sebagai primary key, parameter URL memerlukan penanganan khusus.
+- URL Encoding: Fungsi `update_jabatan` dan `delete_jabatan` menggunakan `urlencoding::encode` pada nama jabatan. Hal ini penting untuk memastikan bahwa karakter spasi atau simbol khusus pada nama jabatan (misalnya "Staff IT") dapat dibaca dengan benar oleh URL browser/API (menjadi "Staff%20IT").
 
 16. **presensi_service.rs**
 
@@ -889,15 +878,9 @@ pub async fn upsert_presensi(presensi: NewPresensi) -> Result<(), String> {
 ```
 
 Penjelasan:
-- File ini menggunakan model Presensi, koneksi Supabase, dan library chrono untuk perhitungan tanggal, serta `serde_json` untuk membuat payload JSON.
-- `list_presensi_for_employee_month`:
-  - Menghitung tanggal awal dan akhir bulan secara otomatis.
-  - Mengirim request GET ke Supabase dengan filter `employee_id` dan rentang tanggal.
-  - Memparsing hasil JSON menjadi daftar Presensi.
-- `upsert_presensi`:
-  - Melakukan insert atau update presensi jika sudah ada data yang sama (berdasarkan `employee_id` dan tanggal).
-  - Mengirim request POST dengan payload JSON dan pengaturan conflict resolution.
-- Semua fungsi berjalan `asynchronous` dan memakai autentikasi Supabase melalui header API Key.
+- Manipulasi Tanggal: Fungsi `list_presensi_for_employee_month` menggunakan library `chrono` untuk menghitung tanggal awal (tanggal 1) dan tanggal akhir bulan secara otomatis berdasarkan input tahun dan bulan. Rentang tanggal ini digunakan untuk memfilter data presensi.
+- Upsert: Fungsi `upsert_presensi` menggunakan metode `sb.upsert_json`. Teknik upsert (Update or Insert) memastikan bahwa jika data presensi untuk karyawan dan tanggal tersebut sudah ada, data lama akan diperbarui; jika belum ada, data baru akan dibuat. Ini mencegah duplikasi data presensi harian.
+- Logika Agregasi: Fungsi `get_presensi_summary_for_employee_month` tidak hanya mengambil data, tetapi juga melakukan pemrosesan data. Fungsi ini melakukan iterasi (looping) pada daftar presensi yang diambil dari database untuk menghitung jumlah total hari `hadir`, `sakit`, `cuti`, dan `absen`, lalu mengemasnya ke dalam objek `PresensiSummary`.
 
 17. **payslip_pdf_service.rs**
 
@@ -1698,7 +1681,10 @@ async fn get_presensi_summary_limited(
 ```
 
 Penjelasan:
-- 
+- Pembuatan Laporan: Bertanggung jawab menyusun dan men-generate file PDF slip gaji menggunakan crate `genpdf`.
+- Parallel Processing: Fungsi utama mendukung mode MultiCore menggunakan `tokio::spawn`. Ini memungkinkan aplikasi memproses pembuatan slip gaji untuk banyak karyawan sekaligus secara paralel (bersamaan), bukan satu per satu, sehingga performa jauh lebih cepat.
+- Rate Limiting: Menggunakan `tokio::sync::Semaphore` untuk membatasi jumlah permintaan ke database yang berjalan bersamaan (maksimal 12). Hal ini mencegah koneksi database terputus (timeout) saat melakukan proses batching skala besar.
+- Perhitungan Gaji: Fungsi `build_slip_data` berisi logika bisnis penggajian yang menghitung gaji bersih berdasarkan gaji pokok, tunjangan, potongan asuransi, serta menghitung proporsi kehadiran efektif karyawan.
 
 18. **src/app/services/mod.rs**
 
